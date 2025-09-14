@@ -94,6 +94,17 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         uiGroup.add(notificationsRow);
 
+        // Enhanced terminal support setting
+        const terminalSupportRow = new Adw.SwitchRow({
+            title: _('Enhanced Terminal Support'),
+            subtitle: _('Use specialized paste methods for terminal applications (recommended)'),
+            active: this.getSettings().get_boolean('enhanced-terminal-support'),
+        });
+        terminalSupportRow.connect('notify::active', () => {
+            this.getSettings().set_boolean('enhanced-terminal-support', terminalSupportRow.get_active());
+        });
+        uiGroup.add(terminalSupportRow);
+
         // Create an info group with usage instructions
         const infoGroup = new Adw.PreferencesGroup({
             title: _('Usage'),
@@ -118,5 +129,11 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             subtitle: _('Set between 5-300 seconds. Longer recordings may use more memory and bandwidth.'),
         });
         infoGroup.add(timeLimitInfoRow);
+
+        const terminalInfoRow = new Adw.ActionRow({
+            title: _('Terminal Support'),
+            subtitle: _('Enhanced terminal support detects terminal applications and uses Ctrl+Shift+V, middle-click, or direct typing for better compatibility.'),
+        });
+        infoGroup.add(terminalInfoRow);
     }
 }
