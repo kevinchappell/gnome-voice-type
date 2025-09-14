@@ -10,8 +10,12 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
-    _init() {
+    _init(extension) {
         super._init(0.0, _('Voice Type Input'));
+
+        // Store extension reference for settings access
+        this._extension = extension;
+        this._settings = extension.getSettings();
 
         // Track signal connections for cleanup
         this._signalConnections = [];
@@ -62,8 +66,24 @@ class Indicator extends PanelMenu.Button {
             // Create a temporary file for the recording
             this.tempFile = GLib.build_filenamev([GLib.get_tmp_dir(), `voice-input-${Date.now()}.wav`]);
             
+            // Get recording quality setting
+            const recordingQuality = this._settings.get_string('recording-quality');
+            let sampleRate;
+            
+            switch (recordingQuality) {
+                case 'low':
+                    sampleRate = 8000;
+                    break;
+                case 'high':
+                    sampleRate = 44100;
+                    break;
+                default: // medium
+                    sampleRate = 16000;
+                    break;
+            }
+            
             // Create GStreamer pipeline for audio recording
-            const pipelineStr = `autoaudiosrc ! audioconvert ! audioresample ! audio/x-raw,rate=16000,channels=1 ! wavenc ! filesink location="${this.tempFile}"`;
+            const pipelineStr = `autoaudiosrc ! audioconvert ! audioresample ! audio/x-raw,rate=${sampleRate},channels=1 ! wavenc ! filesink location="${this.tempFile}"`;
             this.pipeline = Gst.parse_launch(pipelineStr);
             
             if (!this.pipeline) {
@@ -73,11 +93,17 @@ class Indicator extends PanelMenu.Button {
             // Start recording
             this.pipeline.set_state(Gst.State.PLAYING);
 
-            Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
+            }
         } catch (error) {
             this.isRecording = false;
             this.setMicrophoneRecording(false);
-            Main.notify(_('Voice Type Input'), _('Failed to start recording: ') + error.message);
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Failed to start recording: ') + error.message);
+            }
             console.error('Error starting recording:', error);
         }
     }
@@ -94,13 +120,22 @@ class Indicator extends PanelMenu.Button {
             this.setMicrophoneRecording(false);
 
             if (this.tempFile) {
-                Main.notify(_('Voice Type Input'), _('Processing audio...'));
+                const enableNotifications = this._settings.get_boolean('enable-notifications');
+                if (enableNotifications) {
+                    Main.notify(_('Voice Type Input'), _('Processing audio...'));
+                }
                 await this._transcribeAudio();
             } else {
-                Main.notify(_('Voice Type Input'), _('Recording stopped'));
+                const enableNotifications = this._settings.get_boolean('enable-notifications');
+                if (enableNotifications) {
+                    Main.notify(_('Voice Type Input'), _('Recording stopped'));
+                }
             }
         } catch (error) {
-            Main.notify(_('Voice Type Input'), _('Error stopping recording: ') + error.message);
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Error stopping recording: ') + error.message);
+            }
             console.error('Error stopping recording:', error);
         }
     }
@@ -113,11 +148,19 @@ class Indicator extends PanelMenu.Button {
                 throw new Error('Audio file not found');
             }
 
+            // Get endpoint URL from settings
+            const endpointUrl = this._settings.get_string('endpoint-url');
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            
+            // Ensure URL doesn't end with slash and add /transcribe
+            const baseUrl = endpointUrl.replace(/\/$/, '');
+            const fullUrl = `${baseUrl}/transcribe`;
+
             // For now, use curl as a fallback since Soup multipart is complex in GNOME Shell
             // This is a temporary solution until we can properly implement the Soup multipart
             const curlCommand = [
                 'curl', '-X', 'POST',
-                'http://localhost:8675/transcribe',
+                fullUrl,
                 '-H', 'accept: application/json',
                 '-H', 'Content-Type: multipart/form-data',
                 '-F', `file=@${this.tempFile}`,
@@ -145,13 +188,18 @@ class Indicator extends PanelMenu.Button {
             if (result.text) {
                 // Type the transcribed text
                 this._typeText(result.text.trim());
-                Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
-            } else {
+                if (enableNotifications) {
+                    Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
+                }
+            } else if (enableNotifications) {
                 Main.notify(_('Voice Type Input'), _('No speech detected'));
             }
 
         } catch (error) {
-            Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
+            }
             console.error('Transcription error:', error);
         } finally {
             // Clean up temporary file
@@ -225,18 +273,27 @@ class Indicator extends PanelMenu.Button {
                     const success = proc.wait_finish(result);
                     if (!success || proc.get_exit_status() !== 0) {
                         // If both fail, just notify user that text is in clipboard
-                        Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+                        const enableNotifications = this._settings.get_boolean('enable-notifications');
+                        if (enableNotifications) {
+                            Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+                        }
                     }
                 } catch (error) {
                     console.debug('xdotool failed:', error.message);
-                    Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+                    const enableNotifications = this._settings.get_boolean('enable-notifications');
+                    if (enableNotifications) {
+                        Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+                    }
                 }
             });
 
         } catch (error) {
             // Final fallback - just notify that text is in clipboard
             console.debug('xdotool execution failed:', error.message);
-            Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+            }
         }
     }
 
@@ -245,10 +302,16 @@ class Indicator extends PanelMenu.Button {
             // Fallback: copy to clipboard and notify user
             const clipboard = St.Clipboard.get_default();
             clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
-            Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+            }
         } catch (error) {
             console.error('Clipboard fallback failed:', error);
-            Main.notify(_('Voice Type Input'), `Text: "${text}" (manual copy needed)`);
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), `Text: "${text}" (manual copy needed)`);
+            }
         }
     }
 
@@ -333,7 +396,7 @@ class Indicator extends PanelMenu.Button {
 
 export default class VoiceTypeInputExtension extends Extension {
     enable() {
-        this._indicator = new Indicator();
+        this._indicator = new Indicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
     }
 

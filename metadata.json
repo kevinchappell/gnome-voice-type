@@ -4,5 +4,6 @@
   "description": "Voice typing input extension with audio reactive microphone icon and real-time level visualization",
   "version": 2,
   "shell-version": ["46", "46.0"],
-  "url": "https://github.com/kevinchappell/gnome-voice-type-input"
+  "url": "https://github.com/kevinchappell/gnome-voice-type-input",
+  "settings-schema": "org.gnome.shell.extensions.voice-type-input"
 }
