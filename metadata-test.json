@@ -1,8 +1,0 @@
-{
-    "name": "Test Extension",
-    "description": "A simple test extension",
-    "uuid": "test-extension@gnome.org",
-    "version": "1.0",
-    "shell-version": ["46"],
-    "url": "https://github.com/username/test-extension"
-}

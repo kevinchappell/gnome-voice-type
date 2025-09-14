@@ -1,0 +1,26 @@
+{
+  "name": "voice-type-input-gnome-extension",
+  "version": "1.0.0",
+  "description": "Voice Type Input GNOME Extension",
+  "scripts": {
+    "install": "./dev.sh install",
+    "reload": "./dev.sh reload",
+    "enable": "./dev.sh enable",
+    "disable": "./dev.sh disable",
+    "status": "./dev.sh status",
+    "watch": "./dev.sh watch",
+    "nested": "./dev.sh nested",
+    "test": "./dev.sh test",
+    "logs": "./dev.sh logs",
+    "uninstall": "./dev.sh uninstall",
+    "dev": "./dev.sh watch",
+    "start": "./dev.sh install"
+  },
+  "keywords": ["gnome", "extension", "voice", "input", "microphone"],
+  "author": "Kevin Chappell",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kevinchappell/gnome-voice-type-input"
+  }
+}

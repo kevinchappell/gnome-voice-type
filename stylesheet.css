@@ -1,0 +1,28 @@
+/* Voice Type Input Extension Styles */
+
+.voice-type-input-icon {
+    icon-size: 16px;
+}
+
+.voice-type-input-icon.active {
+    color: #ff6b6b;
+    background-color: rgba(255, 107, 107, 0.1);
+    border-radius: 3px;
+    padding: 2px;
+}
+
+/* Hover effect for the microphone icon */
+.voice-type-input-icon:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    padding: 2px;
+}
+
+/* Menu items styling */
+.voice-type-input-menu-item {
+    font-weight: normal;
+}
+
+.voice-type-input-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
