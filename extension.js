@@ -35,6 +35,7 @@ class Indicator extends PanelMenu.Button {
         this.isRecording = false;
         this.pipeline = null;
         this.tempFile = null;
+        this.recordingTimeout = null;
 
         // Connect click event to toggle recording - track connection for cleanup
         const clickConnection = this.connect('button-press-event', this._onClicked.bind(this));
@@ -93,6 +94,20 @@ class Indicator extends PanelMenu.Button {
             // Start recording
             this.pipeline.set_state(Gst.State.PLAYING);
 
+            // Set up recording timeout
+            const recordingLimitSeconds = this._settings.get_int('recording-limit-seconds');
+            this.recordingTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, recordingLimitSeconds, () => {
+                if (this.isRecording) {
+                    const enableNotifications = this._settings.get_boolean('enable-notifications');
+                    if (enableNotifications) {
+                        Main.notify(_('Voice Type Input'), _(`Recording stopped - ${recordingLimitSeconds} second limit reached`));
+                    }
+                    this._stopRecording();
+                }
+                this.recordingTimeout = null;
+                return GLib.SOURCE_REMOVE;
+            });
+
             const enableNotifications = this._settings.get_boolean('enable-notifications');
             if (enableNotifications) {
                 Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
@@ -100,6 +115,13 @@ class Indicator extends PanelMenu.Button {
         } catch (error) {
             this.isRecording = false;
             this.setMicrophoneRecording(false);
+            
+            // Clear timeout if it was set
+            if (this.recordingTimeout) {
+                GLib.source_remove(this.recordingTimeout);
+                this.recordingTimeout = null;
+            }
+            
             const enableNotifications = this._settings.get_boolean('enable-notifications');
             if (enableNotifications) {
                 Main.notify(_('Voice Type Input'), _('Failed to start recording: ') + error.message);
@@ -110,6 +132,12 @@ class Indicator extends PanelMenu.Button {
 
     async _stopRecording() {
         try {
+            // Clear timeout if active
+            if (this.recordingTimeout) {
+                GLib.source_remove(this.recordingTimeout);
+                this.recordingTimeout = null;
+            }
+            
             if (this.pipeline) {
                 // Stop the pipeline
                 this.pipeline.set_state(Gst.State.NULL);
@@ -348,6 +376,12 @@ class Indicator extends PanelMenu.Button {
         // Stop recording if active
         if (this.isRecording) {
             this._stopRecording();
+        }
+
+        // Clear recording timeout
+        if (this.recordingTimeout) {
+            GLib.source_remove(this.recordingTimeout);
+            this.recordingTimeout = null;
         }
 
         // Clean up GStreamer pipeline
