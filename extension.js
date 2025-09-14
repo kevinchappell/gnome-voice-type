@@ -145,7 +145,7 @@ class Indicator extends PanelMenu.Button {
             if (result.text) {
                 // Type the transcribed text
                 this._typeText(result.text.trim());
-                Main.notify(_('Voice Type Input'), _('Text transcribed and typed!'));
+                Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
             } else {
                 Main.notify(_('Voice Type Input'), _('No speech detected'));
             }
@@ -161,16 +161,93 @@ class Indicator extends PanelMenu.Button {
 
     _typeText(text) {
         try {
-            // Get the clipboard and set text
+            // First, copy text to clipboard
             const clipboard = St.Clipboard.get_default();
             clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
             
-            // Simulate Ctrl+V to paste the text
-            // Note: This is a simplified approach - in a real implementation,
-            // you might want to use more sophisticated input simulation
-            Main.notify(_('Voice Type Input'), `Text copied to clipboard: "${text}"`);
+            // Then simulate Ctrl+V to paste
+            // This approach works on both X11 and Wayland
+            this._simulatePaste();
+            
         } catch (error) {
             console.error('Error typing text:', error);
+            this._fallbackToClipboard(text);
+        }
+    }
+
+    _simulatePaste() {
+        try {
+            // Use wtype for Wayland or xdotool for X11
+            // First try wtype (Wayland-compatible)
+            const wtypeCommand = [
+                'wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'
+            ];
+
+            const proc = Gio.Subprocess.new(
+                wtypeCommand,
+                Gio.SubprocessFlags.STDERR_PIPE
+            );
+
+            proc.wait_async(null, (source, result) => {
+                try {
+                    const success = proc.wait_finish(result);
+                    if (!success || proc.get_exit_status() !== 0) {
+                        // If wtype fails, try xdotool (X11)
+                        this._tryX11Paste();
+                    }
+                } catch (error) {
+                    // If wtype is not available, try xdotool
+                    console.debug('wtype not available:', error.message);
+                    this._tryX11Paste();
+                }
+            });
+
+        } catch (error) {
+            // If wtype execution fails, try xdotool
+            console.debug('wtype execution failed:', error.message);
+            this._tryX11Paste();
+        }
+    }
+
+    _tryX11Paste() {
+        try {
+            const xdotoolCommand = [
+                'xdotool', 'key', 'ctrl+v'
+            ];
+
+            const proc = Gio.Subprocess.new(
+                xdotoolCommand,
+                Gio.SubprocessFlags.STDERR_PIPE
+            );
+
+            proc.wait_async(null, (source, result) => {
+                try {
+                    const success = proc.wait_finish(result);
+                    if (!success || proc.get_exit_status() !== 0) {
+                        // If both fail, just notify user that text is in clipboard
+                        Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+                    }
+                } catch (error) {
+                    console.debug('xdotool failed:', error.message);
+                    Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+                }
+            });
+
+        } catch (error) {
+            // Final fallback - just notify that text is in clipboard
+            console.debug('xdotool execution failed:', error.message);
+            Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+        }
+    }
+
+    _fallbackToClipboard(text) {
+        try {
+            // Fallback: copy to clipboard and notify user
+            const clipboard = St.Clipboard.get_default();
+            clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+            Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V'));
+        } catch (error) {
+            console.error('Clipboard fallback failed:', error);
             Main.notify(_('Voice Type Input'), `Text: "${text}" (manual copy needed)`);
         }
     }
