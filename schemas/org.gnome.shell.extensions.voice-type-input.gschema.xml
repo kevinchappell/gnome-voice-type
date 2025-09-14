@@ -16,5 +16,11 @@
       <summary>Enable notifications</summary>
       <description>Show notifications for recording status and results</description>
     </key>
+    <key name="recording-limit-seconds" type="i">
+      <default>30</default>
+      <summary>Recording time limit</summary>
+      <description>Maximum recording duration in seconds (5-300 seconds)</description>
+      <range min="5" max="300"/>
+    </key>
   </schema>
 </schemalist>
