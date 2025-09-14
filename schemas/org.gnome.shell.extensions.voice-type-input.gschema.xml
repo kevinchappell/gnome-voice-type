@@ -22,5 +22,10 @@
       <description>Maximum recording duration in seconds (5-300 seconds)</description>
       <range min="5" max="300"/>
     </key>
+    <key name="enhanced-terminal-support" type="b">
+      <default>true</default>
+      <summary>Enhanced terminal support</summary>
+      <description>Use terminal-specific paste methods for better compatibility with terminal applications</description>
+    </key>
   </schema>
 </schemalist>
