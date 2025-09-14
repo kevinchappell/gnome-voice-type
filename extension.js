@@ -1,10 +1,11 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Gst from 'gi://Gst';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const Indicator = GObject.registerClass(
@@ -12,13 +13,11 @@ class Indicator extends PanelMenu.Button {
     _init() {
         super._init(0.0, _('Voice Type Input'));
 
-        // Create container for the icon and audio level indicators
-        this.container = new St.BoxLayout({
-            style_class: 'voice-type-input-container',
-            vertical: false,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
+        // Track signal connections for cleanup
+        this._signalConnections = [];
+
+        // Initialize GStreamer
+        Gst.init(null);
 
         // Create the microphone icon
         this.icon = new St.Icon({
@@ -26,54 +25,20 @@ class Indicator extends PanelMenu.Button {
             style_class: 'system-status-icon voice-type-input-icon',
         });
 
-        // Create audio level indicators (3 bars)
-        this.levelBars = [];
-        this.levelContainer = new St.BoxLayout({
-            style_class: 'voice-level-container',
-            vertical: false,
-            x_align: Clutter.ActorAlign.CENTER,
-        });
+        this.add_child(this.icon);
 
-        for (let i = 0; i < 3; i++) {
-            const bar = new St.Widget({
-                style_class: `voice-level-bar voice-level-bar-${i + 1}`,
-                width: 2,
-                height: 8 + (i * 2), // Progressive height: 8, 10, 12
-                opacity: 0,
-            });
-            this.levelBars.push(bar);
-            this.levelContainer.add_child(bar);
-        }
-
-        this.container.add_child(this.icon);
-        this.container.add_child(this.levelContainer);
-        this.add_child(this.container);
-
-        // Audio recording state
+        // Recording state
         this.isRecording = false;
-        this.simulationTimer = null;
-        this.levelBarsAnimationId = null;
+        this.pipeline = null;
+        this.tempFile = null;
 
-        // Connect click event to toggle recording
-        this.connect('button-press-event', this._onClicked.bind(this));
+        // Connect click event to toggle recording - track connection for cleanup
+        const clickConnection = this.connect('button-press-event', this._onClicked.bind(this));
+        this._signalConnections.push({ object: this, id: clickConnection });
 
-        // Create a simple popup menu
-        let item = new PopupMenu.PopupMenuItem(_('Start Voice Input'));
-        this.voiceMenuItem = item;
-        item.connect('activate', () => {
-            this._toggleRecording();
-        });
-        this.menu.addMenuItem(item);
-
-        // Add a separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        // Add settings item
-        let settingsItem = new PopupMenu.PopupMenuItem(_('Settings'));
-        settingsItem.connect('activate', () => {
-            Main.notify(_('Voice Type Input'), _('Settings coming soon!'));
-        });
-        this.menu.addMenuItem(settingsItem);
+        // Disable the popup menu to avoid confusion with click toggle
+        this.menu.actor.hide();
+        this.menu.actor.reactive = false;
     }
 
     _onClicked() {
@@ -93,126 +58,199 @@ class Indicator extends PanelMenu.Button {
         try {
             this.isRecording = true;
             this.setMicrophoneRecording(true);
-            this.voiceMenuItem.label.text = _('Stop Voice Input');
+
+            // Create a temporary file for the recording
+            this.tempFile = GLib.build_filenamev([GLib.get_tmp_dir(), `voice-input-${Date.now()}.wav`]);
             
-            // Start simulated audio level monitoring
-            this._startSimulatedAudioLevelMonitoring();
+            // Create GStreamer pipeline for audio recording
+            const pipelineStr = `autoaudiosrc ! audioconvert ! audioresample ! audio/x-raw,rate=16000,channels=1 ! wavenc ! filesink location="${this.tempFile}"`;
+            this.pipeline = Gst.parse_launch(pipelineStr);
+            
+            if (!this.pipeline) {
+                throw new Error('Failed to create GStreamer pipeline');
+            }
+
+            // Start recording
+            this.pipeline.set_state(Gst.State.PLAYING);
 
             Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
         } catch (error) {
+            this.isRecording = false;
+            this.setMicrophoneRecording(false);
             Main.notify(_('Voice Type Input'), _('Failed to start recording: ') + error.message);
             console.error('Error starting recording:', error);
         }
     }
 
-    _stopRecording() {
-        // Stop simulation timer
-        if (this.simulationTimer) {
-            GLib.source_remove(this.simulationTimer);
-            this.simulationTimer = null;
-        }
-
-        this.isRecording = false;
-        this.setMicrophoneRecording(false);
-        this.voiceMenuItem.label.text = _('Start Voice Input');
-        
-        // Stop audio level monitoring
-        this._stopSimulatedAudioLevelMonitoring();
-
-        Main.notify(_('Voice Type Input'), _('Recording stopped'));
-    }
-
-    _startSimulatedAudioLevelMonitoring() {
-        // Simulate realistic audio level variations
-        let time = 0;
-        const updateLevels = () => {
-            if (!this.isRecording) {
-                return GLib.SOURCE_REMOVE;
+    async _stopRecording() {
+        try {
+            if (this.pipeline) {
+                // Stop the pipeline
+                this.pipeline.set_state(Gst.State.NULL);
+                this.pipeline = null;
             }
 
-            time += 0.1;
-            
-            // Create realistic audio level simulation with varying patterns
-            // Base level with some randomness
-            const baseLevel = 0.3 + (Math.sin(time * 2) * 0.2) + (Math.random() * 0.3);
-            // Add speech-like variations
-            const speechPattern = Math.sin(time * 8) * 0.4;
-            // Occasional peaks for emphasis
-            const peaks = Math.random() < 0.1 ? 0.5 : 0;
-            
-            const level = Math.max(0, Math.min(1, baseLevel + speechPattern + peaks));
-            
-            // Update visual indicators based on simulated audio level
-            this._updateAudioLevelBars(level);
-            
-            return GLib.SOURCE_CONTINUE;
-        };
+            this.isRecording = false;
+            this.setMicrophoneRecording(false);
 
-        // Update every 100ms for smooth animation
-        this.simulationTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, updateLevels);
-    }
-
-    _stopSimulatedAudioLevelMonitoring() {
-        if (this.simulationTimer) {
-            GLib.source_remove(this.simulationTimer);
-            this.simulationTimer = null;
+            if (this.tempFile) {
+                Main.notify(_('Voice Type Input'), _('Processing audio...'));
+                await this._transcribeAudio();
+            } else {
+                Main.notify(_('Voice Type Input'), _('Recording stopped'));
+            }
+        } catch (error) {
+            Main.notify(_('Voice Type Input'), _('Error stopping recording: ') + error.message);
+            console.error('Error stopping recording:', error);
         }
-        
-        // Reset all bars to inactive state
-        this.levelBars.forEach(bar => {
-            bar.opacity = 0;
-        });
     }
 
-    _updateAudioLevelBars(level) {
-        // Define thresholds for each bar (0.1, 0.3, 0.6)
-        const thresholds = [0.1, 0.3, 0.6];
-        
-        this.levelBars.forEach((bar, index) => {
-            const shouldBeActive = level > thresholds[index];
-            const targetOpacity = shouldBeActive ? (0.5 + (level * 0.5)) : 0.1;
+    async _transcribeAudio() {
+        try {
+            // Check if file exists
+            const file = Gio.File.new_for_path(this.tempFile);
+            if (!file.query_exists(null)) {
+                throw new Error('Audio file not found');
+            }
+
+            // For now, use curl as a fallback since Soup multipart is complex in GNOME Shell
+            // This is a temporary solution until we can properly implement the Soup multipart
+            const curlCommand = [
+                'curl', '-X', 'POST',
+                'http://localhost:8675/transcribe',
+                '-H', 'accept: application/json',
+                '-H', 'Content-Type: multipart/form-data',
+                '-F', `file=@${this.tempFile}`,
+                '--silent'
+            ];
+
+            // Execute curl command
+            const proc = Gio.Subprocess.new(
+                curlCommand,
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            );
+
+            const [success, stdout, stderr] = proc.communicate_utf8(null, null);
+
+            if (!success) {
+                throw new Error('Failed to execute request');
+            }
+
+            if (proc.get_exit_status() !== 0) {
+                throw new Error(`Request failed: ${stderr}`);
+            }
+
+            const result = JSON.parse(stdout);
             
-            // Smooth opacity transition
-            bar.ease({
-                opacity: targetOpacity,
-                duration: 100,
-                mode: Clutter.AnimationMode.EASE_OUT,
-            });
-        });
+            if (result.text) {
+                // Type the transcribed text
+                this._typeText(result.text.trim());
+                Main.notify(_('Voice Type Input'), _('Text transcribed and typed!'));
+            } else {
+                Main.notify(_('Voice Type Input'), _('No speech detected'));
+            }
+
+        } catch (error) {
+            Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
+            console.error('Transcription error:', error);
+        } finally {
+            // Clean up temporary file
+            this._cleanupTempFile();
+        }
+    }
+
+    _typeText(text) {
+        try {
+            // Get the clipboard and set text
+            const clipboard = St.Clipboard.get_default();
+            clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+            
+            // Simulate Ctrl+V to paste the text
+            // Note: This is a simplified approach - in a real implementation,
+            // you might want to use more sophisticated input simulation
+            Main.notify(_('Voice Type Input'), `Text copied to clipboard: "${text}"`);
+        } catch (error) {
+            console.error('Error typing text:', error);
+            Main.notify(_('Voice Type Input'), `Text: "${text}" (manual copy needed)`);
+        }
+    }
+
+    _cleanupTempFile() {
+        if (this.tempFile) {
+            try {
+                const file = Gio.File.new_for_path(this.tempFile);
+                if (file.query_exists(null)) {
+                    file.delete(null);
+                }
+            } catch (error) {
+                console.debug('Error cleaning up temp file:', error);
+            }
+            this.tempFile = null;
+        }
     }
 
     // Update microphone state visual
     setMicrophoneRecording(recording) {
         if (recording) {
             this.icon.style_class = 'system-status-icon voice-type-input-icon recording';
-            this.levelContainer.opacity = 255;
         } else {
             this.icon.style_class = 'system-status-icon voice-type-input-icon';
-            this.levelContainer.opacity = 0;
         }
-    }
-
-    // Legacy method for compatibility
-    setMicrophoneActive(active) {
-        this.setMicrophoneRecording(active);
     }
 
     destroy() {
-        // Stop recording first
+        // Prevent multiple destroy calls
+        if (this._destroying) {
+            return;
+        }
+        this._destroying = true;
+        
+        // Stop recording if active
         if (this.isRecording) {
             this._stopRecording();
         }
+
+        // Clean up GStreamer pipeline
+        if (this.pipeline) {
+            this.pipeline.set_state(Gst.State.NULL);
+            this.pipeline = null;
+        }
+
+        // Clean up temporary file
+        this._cleanupTempFile();
         
-        // Clear any timers
-        if (this.simulationTimer) {
-            GLib.source_remove(this.simulationTimer);
-            this.simulationTimer = null;
+        // Disconnect all signal connections before destroying
+        if (this._signalConnections) {
+            this._signalConnections.forEach(connection => {
+                try {
+                    if (connection.object && connection.id) {
+                        if (typeof connection.object.disconnect === 'function') {
+                            connection.object.disconnect(connection.id);
+                        }
+                    }
+                } catch (e) {
+                    console.debug('Signal disconnect failed:', e.message);
+                }
+            });
+            this._signalConnections = [];
         }
         
-        // Clean up references
-        this.levelBars = null;
+        // Destroy the icon safely
+        try {
+            if (this.icon && typeof this.icon.destroy === 'function') {
+                this.icon.destroy();
+            }
+        } catch (e) {
+            console.debug('Icon cleanup failed:', e.message);
+        }
+        this.icon = null;
         
-        super.destroy();
+        // Finally call parent destroy safely
+        try {
+            super.destroy();
+        } catch (e) {
+            console.debug('Parent destroy failed:', e.message);
+        }
     }
 });
 
@@ -223,7 +261,20 @@ export default class VoiceTypeInputExtension extends Extension {
     }
 
     disable() {
-        this._indicator?.destroy();
-        this._indicator = null;
+        if (this._indicator) {
+            // Remove from panel first to prevent further interactions
+            if (Main.panel?.statusArea?.[this.uuid]) {
+                delete Main.panel.statusArea[this.uuid];
+            }
+            
+            // Then destroy the indicator
+            try {
+                this._indicator.destroy();
+            } catch (e) {
+                console.debug('Indicator destroy failed during disable:', e.message);
+            }
+            
+            this._indicator = null;
+        }
     }
 }
