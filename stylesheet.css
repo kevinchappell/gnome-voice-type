@@ -103,3 +103,46 @@
         transition-duration: 0ms;
     }
 }
+
+/* Preferences styling */
+.voice-type-input-prefs-group {
+    margin: 12px 0;
+}
+
+.voice-type-input-prefs-row {
+    padding: 12px;
+    margin: 4px 0;
+}
+
+.voice-type-input-prefs-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 8px;
+}
+
+.voice-type-input-prefs-description {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9em;
+    margin-bottom: 12px;
+}
+
+.voice-type-input-entry {
+    min-width: 300px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.voice-type-input-entry:focus {
+    border-color: #3584e4;
+    box-shadow: 0 0 0 2px rgba(53, 132, 228, 0.3);
+}
+
+.voice-type-input-switch {
+    margin-left: auto;
+}
+
+.voice-type-input-combo {
+    min-width: 200px;
+}

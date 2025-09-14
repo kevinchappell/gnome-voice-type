@@ -119,6 +119,40 @@ refresh_cache() {
     sleep 3
 }
 
+# Function to compile GSettings schema
+compile_schema() {
+    print_status "Compiling GSettings schema..."
+    
+    local schema_dir="$EXTENSION_DIR/schemas"
+    local schema_file="$SOURCE_DIR/schemas/org.gnome.shell.extensions.voice-type-input.gschema.xml"
+    
+    # Check if schema file exists
+    if [ ! -f "$schema_file" ]; then
+        print_warning "No schema file found at $schema_file"
+        return 0
+    fi
+    
+    # Create schemas directory in extension dir
+    mkdir -p "$schema_dir"
+    
+    # Copy schema file
+    cp "$schema_file" "$schema_dir/"
+    
+    # Compile the schema
+    if command -v glib-compile-schemas &> /dev/null; then
+        print_status "Compiling schema with glib-compile-schemas..."
+        if glib-compile-schemas "$schema_dir" 2>/dev/null; then
+            print_success "Schema compiled successfully"
+        else
+            print_error "Failed to compile schema"
+            return 1
+        fi
+    else
+        print_error "glib-compile-schemas not found. Install glib2-dev or similar package."
+        return 1
+    fi
+}
+
 # Function to install/update the extension
 install_extension() {
     print_status "Installing/updating extension..."
@@ -126,10 +160,19 @@ install_extension() {
     # Create extension directory if it doesn't exist
     mkdir -p "$EXTENSION_DIR"
     
-    # Copy files with proper permissions
+    # Copy main files with proper permissions
     cp "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
     cp "$SOURCE_DIR/extension.js" "$EXTENSION_DIR/"
     cp "$SOURCE_DIR/stylesheet.css" "$EXTENSION_DIR/"
+    
+    # Copy prefs.js if it exists
+    if [ -f "$SOURCE_DIR/prefs.js" ]; then
+        print_status "Copying preferences file..."
+        cp "$SOURCE_DIR/prefs.js" "$EXTENSION_DIR/"
+    fi
+    
+    # Compile and copy schema
+    compile_schema
     
     # Ensure proper ownership
     chown -R "$USER:$USER" "$EXTENSION_DIR" 2>/dev/null || true
@@ -258,12 +301,19 @@ watch_changes() {
     print_status "Watching for changes in $SOURCE_DIR..."
     print_status "Press Ctrl+C to stop watching"
     
+    # Build list of files to watch
+    local watch_files=(
+        "$SOURCE_DIR/extension.js"
+        "$SOURCE_DIR/metadata.json"
+        "$SOURCE_DIR/stylesheet.css"
+    )
+    
+    # Add optional files if they exist
+    [ -f "$SOURCE_DIR/prefs.js" ] && watch_files+=("$SOURCE_DIR/prefs.js")
+    [ -f "$SOURCE_DIR/schemas/org.gnome.shell.extensions.voice-type-input.gschema.xml" ] && watch_files+=("$SOURCE_DIR/schemas/org.gnome.shell.extensions.voice-type-input.gschema.xml")
+    
     while true; do
-        inotifywait -e modify,move,create,delete \
-            "$SOURCE_DIR/extension.js" \
-            "$SOURCE_DIR/metadata.json" \
-            "$SOURCE_DIR/stylesheet.css" \
-            2>/dev/null
+        inotifywait -e modify,move,create,delete "${watch_files[@]}" 2>/dev/null
         
         print_status "File change detected, reloading extension..."
         install_extension
@@ -348,6 +398,21 @@ case "${1:-install}" in
         test_nested
         ;;
     
+    "prefs"|"p")
+        check_gnome_shell
+        install_extension
+        print_status "Opening extension preferences..."
+        if gnome-extensions prefs "$EXTENSION_UUID" 2>/dev/null; then
+            print_success "Preferences opened"
+        else
+            print_error "Failed to open preferences. Extension might not be installed or enabled."
+            print_status "Trying to enable extension first..."
+            enable_extension
+            sleep 2
+            gnome-extensions prefs "$EXTENSION_UUID"
+        fi
+        ;;
+    
     "logs"|"l")
         show_logs
         ;;
@@ -398,6 +463,27 @@ case "${1:-install}" in
         else
             print_error "extension.js not found"
         fi
+        echo ""
+        print_status "Checking preferences file..."
+        if [ -f "$EXTENSION_DIR/prefs.js" ]; then
+            if node -c "$EXTENSION_DIR/prefs.js" 2>/dev/null; then
+                print_success "prefs.js syntax is valid"
+            else
+                print_error "prefs.js has syntax errors"
+                node -c "$EXTENSION_DIR/prefs.js"
+            fi
+        else
+            print_warning "prefs.js not found (optional)"
+        fi
+        echo ""
+        print_status "Checking GSettings schema..."
+        if [ -f "$EXTENSION_DIR/schemas/gschemas.compiled" ]; then
+            print_success "GSettings schema is compiled"
+        elif [ -f "$SOURCE_DIR/schemas/org.gnome.shell.extensions.voice-type-input.gschema.xml" ]; then
+            print_warning "Schema file exists but not compiled"
+        else
+            print_warning "No GSettings schema found (optional)"
+        fi
         ;;
     
     "uninstall"|"u")
@@ -419,6 +505,7 @@ case "${1:-install}" in
         echo "  watch, w      Watch for file changes and auto-reload"
         echo "  nested, n     Start nested GNOME Shell session (recommended for Wayland)"
         echo "  test, t       Test extension in nested session with auto-enable"
+        echo "  prefs, p      Open extension preferences dialog"
         echo "  logs, l       Show GNOME Shell logs"
         echo "  debug, db     Show detailed debug information"
         echo "  uninstall, u  Uninstall the extension"
@@ -429,6 +516,7 @@ case "${1:-install}" in
         echo "  $0 reload     # Quick reload during development"
         echo "  $0 nested     # Test in nested GNOME Shell (recommended for Wayland)"
         echo "  $0 test       # Auto-test in nested session"
+        echo "  $0 prefs      # Open preferences to configure endpoint"
         echo "  $0 watch      # Auto-reload on file changes"
         echo "  $0 logs       # Monitor logs while developing"
         ;;

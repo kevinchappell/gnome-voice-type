@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.voice-type-input" path="/org/gnome/shell/extensions/voice-type-input/">
+    <key name="endpoint-url" type="s">
+      <default>'http://localhost:8675'</default>
+      <summary>API endpoint URL</summary>
+      <description>The URL of the speech-to-text API endpoint (without the /transcribe path)</description>
+    </key>
+    <key name="recording-quality" type="s">
+      <default>'medium'</default>
+      <summary>Recording quality</summary>
+      <description>Audio recording quality setting (low, medium, high)</description>
+    </key>
+    <key name="enable-notifications" type="b">
+      <default>true</default>
+      <summary>Enable notifications</summary>
+      <description>Show notifications for recording status and results</description>
+    </key>
+  </schema>
+</schemalist>
