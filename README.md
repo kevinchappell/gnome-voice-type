@@ -1,40 +1,96 @@
 # Voice Type Input - GNOME Extension
 
-A GNOME Shell extension that adds a microphone icon to the top bar for voice input functionality.
+A GNOME Shell extension that provides voice-to-text input with an audio reactive microphone indicator in the top panel.
 
 ## Features
 
-- Microphone icon in the GNOME top bar
-- Click to access voice input menu (future functionality)
-- Visual feedback for active/inactive states
-- Compatible with GNOME 46
+### 🎤 Audio Reactive Microphone Icon
+- **Real-time audio level visualization** with animated bars that respond to voice volume
+- **Recording state indication** with pulsing animation when actively recording
+- **Progressive level indicators** with color-coded bars:
+  - 🟢 Green: Low audio levels
+  - 🟡 Yellow: Medium audio levels  
+  - 🔴 Red: High audio levels
+
+### 🔊 Smart Audio Processing
+- **Automatic echo cancellation** for cleaner audio input
+- **Noise suppression** to filter background sounds
+- **Auto gain control** for consistent volume levels
+- **Smooth audio level transitions** with optimized visual feedback
+
+### 🎯 Interactive Controls
+- **Click to toggle** recording directly from the panel icon
+- **Menu integration** with start/stop voice input options
+- **Visual feedback** throughout the recording process
+- **Accessibility support** with reduced motion options
 
 ## Installation
 
+### Prerequisites
+- GNOME Shell 46 or compatible version
+- Microphone access permissions
+- Audio support (PulseAudio/PipeWire)
+
+### Quick Install
+```bash
+# Clone the repository
+git clone https://github.com/kevinchappell/gnome-voice-type-input.git
+cd gnome-voice-type-input
+
+# Install the extension
+make install
+
+# For testing in a safe nested session (recommended)
+make nested
+```
+
 ### Manual Installation
+```bash
+# Create extension directory
+mkdir -p ~/.local/share/gnome-shell/extensions/voice-type-input@kevinchappell.github.io
 
-1. Clone or download this repository
-2. Copy the extension folder to your GNOME extensions directory:
-   ```bash
-   cp -r gnome-voice-type-input ~/.local/share/gnome-shell/extensions/voice-type-input@kevinchappell.github.io
-   ```
-3. Restart GNOME Shell (press `Alt+F2`, type `r`, and press Enter)
-4. Enable the extension using GNOME Extensions app or via command line:
-   ```bash
-   gnome-extensions enable voice-type-input@kevinchappell.github.io
-   ```
+# Copy extension files
+cp -r * ~/.local/share/gnome-shell/extensions/voice-type-input@kevinchappell.github.io/
 
-### Using GNOME Extensions App
-
-1. Open the GNOME Extensions application
-2. Find "Voice Type Input" in the list
-3. Toggle the switch to enable the extension
+# Enable extension (requires logout/restart on Wayland)
+gnome-extensions enable voice-type-input@kevinchappell.github.io
+```
 
 ## Usage
 
-- The microphone icon will appear in the top bar
-- Click the icon to open the menu (functionality will be expanded in future versions)
-- The icon will change appearance when voice input is active
+### Starting Voice Input
+1. **Click the microphone icon** in the top panel, or
+2. **Use the menu** by right-clicking the icon and selecting "Start Voice Input"
+
+### During Recording
+- The microphone icon will **pulse with a red glow** to indicate active recording
+- **Three audio level bars** will appear next to the icon showing real-time voice levels:
+  - Bars animate based on your speaking volume
+  - Higher volume activates more bars with increased opacity
+  - Colors progress from green → yellow → red for different volume levels
+
+### Stopping Recording
+1. **Click the microphone icon again**, or
+2. **Use the menu** and select "Stop Voice Input"
+
+## Audio Reactive Behavior
+
+The extension provides rich visual feedback during voice input:
+
+### Recording States
+- **Idle**: Standard microphone icon
+- **Recording**: Pulsing red background with animated audio level bars
+- **Processing**: Visual feedback while audio is being processed
+
+### Audio Level Visualization
+- **Bar 1 (Green)**: Activates at 10% audio level - indicates voice detection
+- **Bar 2 (Yellow)**: Activates at 30% audio level - normal speaking volume  
+- **Bar 3 (Red)**: Activates at 60% audio level - loud/peak volume
+
+### Smooth Animations
+- Level bars use smooth opacity transitions (100ms)
+- Recording state transitions with CSS animations
+- Reduced motion support for accessibility
 
 ## Development
 
