@@ -1,6 +1,7 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -50,11 +51,8 @@ class Indicator extends PanelMenu.Button {
 
         // Audio recording state
         this.isRecording = false;
-        this.audioContext = null;
-        this.analyser = null;
-        this.dataArray = null;
-        this.source = null;
-        this.animationId = null;
+        this.simulationTimer = null;
+        this.levelBarsAnimationId = null;
 
         // Connect click event to toggle recording
         this.connect('button-press-event', this._onClicked.bind(this));
@@ -93,49 +91,25 @@ class Indicator extends PanelMenu.Button {
 
     async _startRecording() {
         try {
-            // Request microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                } 
-            });
-
-            // Set up audio context for level analysis
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            this.analyser = this.audioContext.createAnalyser();
-            this.source = this.audioContext.createMediaStreamSource(stream);
-            
-            this.analyser.fftSize = 256;
-            this.analyser.smoothingTimeConstant = 0.8;
-            this.source.connect(this.analyser);
-            
-            const bufferLength = this.analyser.frequencyBinCount;
-            this.dataArray = new Uint8Array(bufferLength);
-
             this.isRecording = true;
             this.setMicrophoneRecording(true);
             this.voiceMenuItem.label.text = _('Stop Voice Input');
             
-            // Start audio level monitoring
-            this._startAudioLevelMonitoring();
+            // Start simulated audio level monitoring
+            this._startSimulatedAudioLevelMonitoring();
 
             Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
         } catch (error) {
-            Main.notify(_('Voice Type Input'), _('Failed to access microphone: ') + error.message);
-            console.error('Error accessing microphone:', error);
+            Main.notify(_('Voice Type Input'), _('Failed to start recording: ') + error.message);
+            console.error('Error starting recording:', error);
         }
     }
 
     _stopRecording() {
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
-        }
-
-        if (this.source?.mediaStream) {
-            this.source.mediaStream.getTracks().forEach(track => track.stop());
+        // Stop simulation timer
+        if (this.simulationTimer) {
+            GLib.source_remove(this.simulationTimer);
+            this.simulationTimer = null;
         }
 
         this.isRecording = false;
@@ -143,43 +117,45 @@ class Indicator extends PanelMenu.Button {
         this.voiceMenuItem.label.text = _('Start Voice Input');
         
         // Stop audio level monitoring
-        this._stopAudioLevelMonitoring();
+        this._stopSimulatedAudioLevelMonitoring();
 
         Main.notify(_('Voice Type Input'), _('Recording stopped'));
     }
 
-    _startAudioLevelMonitoring() {
+    _startSimulatedAudioLevelMonitoring() {
+        // Simulate realistic audio level variations
+        let time = 0;
         const updateLevels = () => {
-            if (!this.isRecording || !this.analyser) {
-                return;
+            if (!this.isRecording) {
+                return GLib.SOURCE_REMOVE;
             }
 
-            this.analyser.getByteFrequencyData(this.dataArray);
+            time += 0.1;
             
-            // Calculate average volume level
-            let sum = 0;
-            for (const value of this.dataArray) {
-                sum += value;
-            }
-            const average = sum / this.dataArray.length;
+            // Create realistic audio level simulation with varying patterns
+            // Base level with some randomness
+            const baseLevel = 0.3 + (Math.sin(time * 2) * 0.2) + (Math.random() * 0.3);
+            // Add speech-like variations
+            const speechPattern = Math.sin(time * 8) * 0.4;
+            // Occasional peaks for emphasis
+            const peaks = Math.random() < 0.1 ? 0.5 : 0;
             
-            // Normalize to 0-1 range (0-255 -> 0-1)
-            const normalizedLevel = Math.min(average / 128, 1);
+            const level = Math.max(0, Math.min(1, baseLevel + speechPattern + peaks));
             
-            // Update visual indicators based on audio level
-            this._updateAudioLevelBars(normalizedLevel);
+            // Update visual indicators based on simulated audio level
+            this._updateAudioLevelBars(level);
             
-            // Continue monitoring
-            this.animationId = requestAnimationFrame(updateLevels);
+            return GLib.SOURCE_CONTINUE;
         };
 
-        updateLevels();
+        // Update every 100ms for smooth animation
+        this.simulationTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, updateLevels);
     }
 
-    _stopAudioLevelMonitoring() {
-        if (this.animationId) {
-            cancelAnimationFrame(this.animationId);
-            this.animationId = null;
+    _stopSimulatedAudioLevelMonitoring() {
+        if (this.simulationTimer) {
+            GLib.source_remove(this.simulationTimer);
+            this.simulationTimer = null;
         }
         
         // Reset all bars to inactive state
@@ -222,9 +198,20 @@ class Indicator extends PanelMenu.Button {
     }
 
     destroy() {
+        // Stop recording first
         if (this.isRecording) {
             this._stopRecording();
         }
+        
+        // Clear any timers
+        if (this.simulationTimer) {
+            GLib.source_remove(this.simulationTimer);
+            this.simulationTimer = null;
+        }
+        
+        // Clean up references
+        this.levelBars = null;
+        
         super.destroy();
     }
 });
