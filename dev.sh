@@ -125,57 +125,147 @@ compile_schema() {
     
     local schema_dir="$EXTENSION_DIR/schemas"
     local schema_file="$SOURCE_DIR/schemas/org.gnome.shell.extensions.voice-type-input.gschema.xml"
+    local compiled_schema="$schema_dir/gschemas.compiled"
     
     # Check if schema file exists
     if [ ! -f "$schema_file" ]; then
-        print_warning "No schema file found at $schema_file"
+        print_warning "No schema file found at $schema_file - skipping schema compilation"
         return 0
+    fi
+    
+    # Check if glib-compile-schemas is available
+    if ! command -v glib-compile-schemas &> /dev/null; then
+        print_error "glib-compile-schemas not found. Install glib2-dev or libglib2.0-dev package."
+        print_status "On Ubuntu/Debian: sudo apt install libglib2.0-dev"
+        print_status "On Fedora/RHEL: sudo dnf install glib2-devel"
+        return 1
     fi
     
     # Create schemas directory in extension dir
     mkdir -p "$schema_dir"
     
-    # Copy schema file
-    cp "$schema_file" "$schema_dir/"
+    # Remove old compiled schema to ensure clean compilation
+    [ -f "$compiled_schema" ] && rm -f "$compiled_schema"
     
-    # Compile the schema
-    if command -v glib-compile-schemas &> /dev/null; then
-        print_status "Compiling schema with glib-compile-schemas..."
-        if glib-compile-schemas "$schema_dir" 2>/dev/null; then
+    # Validate schema XML syntax before copying
+    if command -v xmllint &> /dev/null; then
+        print_status "Validating schema XML syntax..."
+        if ! xmllint --noout "$schema_file" 2>/dev/null; then
+            print_error "Schema file has invalid XML syntax"
+            return 1
+        fi
+        print_status "Schema XML syntax is valid"
+    else
+        print_warning "xmllint not found - skipping XML validation"
+    fi
+    
+    # Copy schema file with error checking
+    if ! cp "$schema_file" "$schema_dir/"; then
+        print_error "Failed to copy schema file"
+        return 1
+    fi
+    print_status "Copied schema file to extension directory"
+    
+    # Compile the schema with detailed error output
+    print_status "Compiling schema with glib-compile-schemas..."
+    local compile_output
+    if compile_output=$(glib-compile-schemas "$schema_dir" 2>&1); then
+        if [ -f "$compiled_schema" ]; then
             print_success "Schema compiled successfully"
+            print_status "Generated: $(basename "$compiled_schema")"
+            
+            # Show schema file size for verification
+            local schema_size=$(stat -c%s "$compiled_schema" 2>/dev/null || echo "unknown")
+            print_status "Compiled schema size: ${schema_size} bytes"
         else
-            print_error "Failed to compile schema"
+            print_warning "Schema compilation appeared successful but no compiled schema found"
             return 1
         fi
     else
-        print_error "glib-compile-schemas not found. Install glib2-dev or similar package."
+        print_error "Failed to compile schema:"
+        echo "$compile_output" | while IFS= read -r line; do
+            print_error "  $line"
+        done
         return 1
     fi
+    
+    # Verify the compiled schema is readable
+    if [ -r "$compiled_schema" ]; then
+        print_status "Compiled schema is readable and ready for use"
+    else
+        print_warning "Compiled schema exists but may not be readable"
+        return 1
+    fi
+    
+    return 0
 }
 
 # Function to install/update the extension
 install_extension() {
     print_status "Installing/updating extension..."
     
+    # Define required and optional files/directories to copy
+    local required_files=("metadata.json" "extension.js" "stylesheet.css")
+    local optional_files=("prefs.js" "README.md" "CHANGELOG.md")
+    local optional_dirs=("icons" "locale" "ui")
+    
+    # Check for required files first
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$SOURCE_DIR/$file" ]; then
+            print_error "Required file missing: $file"
+            return 1
+        fi
+    done
+    
     # Create extension directory if it doesn't exist
     mkdir -p "$EXTENSION_DIR"
     
-    # Copy main files with proper permissions
-    cp "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
-    cp "$SOURCE_DIR/extension.js" "$EXTENSION_DIR/"
-    cp "$SOURCE_DIR/stylesheet.css" "$EXTENSION_DIR/"
+    # Remove old files to ensure clean install (but preserve schemas if they exist)
+    print_status "Cleaning old extension files..."
+    find "$EXTENSION_DIR" -type f \( -name "*.js" -o -name "*.css" -o -name "*.json" \) -not -path "*/schemas/*" -delete 2>/dev/null || true
     
-    # Copy prefs.js if it exists
-    if [ -f "$SOURCE_DIR/prefs.js" ]; then
-        print_status "Copying preferences file..."
-        cp "$SOURCE_DIR/prefs.js" "$EXTENSION_DIR/"
-    fi
+    # Copy required files with error checking
+    for file in "${required_files[@]}"; do
+        if ! cp "$SOURCE_DIR/$file" "$EXTENSION_DIR/"; then
+            print_error "Failed to copy $file"
+            return 1
+        fi
+        print_status "Copied $file"
+    done
+    
+    # Copy optional files if they exist
+    for file in "${optional_files[@]}"; do
+        if [ -f "$SOURCE_DIR/$file" ]; then
+            print_status "Copying optional file: $file"
+            cp "$SOURCE_DIR/$file" "$EXTENSION_DIR/"
+        fi
+    done
+    
+    # Copy optional directories if they exist
+    for dir in "${optional_dirs[@]}"; do
+        if [ -d "$SOURCE_DIR/$dir" ]; then
+            print_status "Copying directory: $dir"
+            cp -r "$SOURCE_DIR/$dir" "$EXTENSION_DIR/"
+        fi
+    done
     
     # Compile and copy schema
-    compile_schema
+    if ! compile_schema; then
+        print_warning "Schema compilation failed, but continuing..."
+    fi
+    
+    # Set proper permissions
+    print_status "Setting proper permissions..."
+    find "$EXTENSION_DIR" -type f -exec chmod 644 {} \; 2>/dev/null || true
+    find "$EXTENSION_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
     
     # Ensure proper ownership
-    chown -R "$USER:$USER" "$EXTENSION_DIR" 2>/dev/null || true
+    if ! chown -R "$USER:$USER" "$EXTENSION_DIR" 2>/dev/null; then
+        print_warning "Could not set ownership (may require sudo)"
+    fi
+    
+    # Validate critical files
+    print_status "Validating installation..."
     
     # Validate metadata.json
     if ! python3 -m json.tool "$EXTENSION_DIR/metadata.json" > /dev/null 2>&1; then
@@ -183,7 +273,31 @@ install_extension() {
         return 1
     fi
     
-    print_success "Extension files copied to $EXTENSION_DIR"
+    # Basic JavaScript syntax check if node is available
+    if command -v node &> /dev/null; then
+        if ! node -c "$EXTENSION_DIR/extension.js" 2>/dev/null; then
+            print_error "JavaScript syntax error in extension.js"
+            return 1
+        fi
+        
+        if [ -f "$EXTENSION_DIR/prefs.js" ] && ! node -c "$EXTENSION_DIR/prefs.js" 2>/dev/null; then
+            print_error "JavaScript syntax error in prefs.js"
+            return 1
+        fi
+    fi
+    
+    # Verify UUID matches in metadata.json
+    local metadata_uuid=$(python3 -c "import json, sys; print(json.load(open('$EXTENSION_DIR/metadata.json'))['uuid'])" 2>/dev/null)
+    if [ "$metadata_uuid" != "$EXTENSION_UUID" ]; then
+        print_error "UUID mismatch: metadata.json has '$metadata_uuid' but expected '$EXTENSION_UUID'"
+        return 1
+    fi
+    
+    print_success "Extension files copied and validated in $EXTENSION_DIR"
+    
+    # Show what was installed
+    print_status "Installed files:"
+    find "$EXTENSION_DIR" -type f -printf "  %P\n" 2>/dev/null | sort || ls -la "$EXTENSION_DIR"
 }
 
 # Function to enable the extension
@@ -350,6 +464,7 @@ uninstall_extension() {
 case "${1:-install}" in
     "install"|"i")
         check_gnome_shell
+        disable_extension
         install_extension
         refresh_cache
         enable_extension
