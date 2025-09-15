@@ -37,6 +37,10 @@ class Indicator extends PanelMenu.Button {
         this.tempFile = null;
         this.recordingTimeout = null;
 
+        // Recursion guards
+        this._togglingRecording = false;
+        this._stoppingRecording = false;
+
         // Connect click event to toggle recording - track connection for cleanup
         const clickConnection = this.connect('button-press-event', this._onClicked.bind(this));
         this._signalConnections.push({ object: this, id: clickConnection });
@@ -52,67 +56,37 @@ class Indicator extends PanelMenu.Button {
     }
 
     async _toggleRecording() {
-        if (this.isRecording) {
-            this._stopRecording();
-        } else {
-            await this._startRecording();
+        // Prevent recursive toggle calls
+        if (this._togglingRecording) {
+            return;
+        }
+        this._togglingRecording = true;
+        
+        try {
+            if (this.isRecording) {
+                this._stopRecording();
+            } else {
+                await this._startRecording();
+            }
+        } catch (error) {
+            console.error('Error in _toggleRecording:', error);
+        } finally {
+            this._togglingRecording = false;
         }
     }
 
     async _startRecording() {
         try {
+            console.debug('_startRecording called');
             this.isRecording = true;
             this.setMicrophoneRecording(true);
 
-            // Create a temporary file for the recording
-            this.tempFile = GLib.build_filenamev([GLib.get_tmp_dir(), `voice-input-${Date.now()}.wav`]);
-            
-            // Get recording quality setting
-            const recordingQuality = this._settings.get_string('recording-quality');
-            let sampleRate;
-            
-            switch (recordingQuality) {
-                case 'low':
-                    sampleRate = 8000;
-                    break;
-                case 'high':
-                    sampleRate = 44100;
-                    break;
-                default: // medium
-                    sampleRate = 16000;
-                    break;
-            }
-            
-            // Create GStreamer pipeline for audio recording
-            const pipelineStr = `autoaudiosrc ! audioconvert ! audioresample ! audio/x-raw,rate=${sampleRate},channels=1 ! wavenc ! filesink location="${this.tempFile}"`;
-            this.pipeline = Gst.parse_launch(pipelineStr);
-            
-            if (!this.pipeline) {
-                throw new Error('Failed to create GStreamer pipeline');
-            }
+            // Force file-based recording only - streaming disabled
+            console.debug('Starting file-based recording (streaming disabled)...');
+            await this._startFileRecording();
 
-            // Start recording
-            this.pipeline.set_state(Gst.State.PLAYING);
-
-            // Set up recording timeout
-            const recordingLimitSeconds = this._settings.get_int('recording-limit-seconds');
-            this.recordingTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, recordingLimitSeconds, () => {
-                if (this.isRecording) {
-                    const enableNotifications = this._settings.get_boolean('enable-notifications');
-                    if (enableNotifications) {
-                        Main.notify(_('Voice Type Input'), _(`Recording stopped - ${recordingLimitSeconds} second limit reached`));
-                    }
-                    this._stopRecording();
-                }
-                this.recordingTimeout = null;
-                return GLib.SOURCE_REMOVE;
-            });
-
-            const enableNotifications = this._settings.get_boolean('enable-notifications');
-            if (enableNotifications) {
-                Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
-            }
         } catch (error) {
+            console.error('Error in _startRecording:', error);
             this.isRecording = false;
             this.setMicrophoneRecording(false);
             
@@ -130,7 +104,64 @@ class Indicator extends PanelMenu.Button {
         }
     }
 
+    async _startFileRecording() {
+        // Create a temporary file for the recording
+        this.tempFile = GLib.build_filenamev([GLib.get_tmp_dir(), `voice-input-${Date.now()}.wav`]);
+        
+        // Get recording quality setting
+        const recordingQuality = this._settings.get_string('recording-quality');
+        let sampleRate;
+        
+        switch (recordingQuality) {
+            case 'low':
+                sampleRate = 8000;
+                break;
+            case 'high':
+                sampleRate = 44100;
+                break;
+            default: // medium
+                sampleRate = 16000;
+                break;
+        }
+        
+        // Create GStreamer pipeline for audio recording
+        const pipelineStr = `autoaudiosrc ! audioconvert ! audioresample ! audio/x-raw,rate=${sampleRate},channels=1 ! wavenc ! filesink location="${this.tempFile}"`;
+        this.pipeline = Gst.parse_launch(pipelineStr);
+        
+        if (!this.pipeline) {
+            throw new Error('Failed to create GStreamer pipeline');
+        }
+
+        // Start recording
+        this.pipeline.set_state(Gst.State.PLAYING);
+
+        // Set up recording timeout
+        const recordingLimitSeconds = this._settings.get_int('recording-limit-seconds');
+        this.recordingTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, recordingLimitSeconds, () => {
+            if (this.isRecording) {
+                const enableNotifications = this._settings.get_boolean('enable-notifications');
+                if (enableNotifications) {
+                    Main.notify(_('Voice Type Input'), _(`Recording stopped - ${recordingLimitSeconds} second limit reached`));
+                }
+                this._stopRecording();
+            }
+            this.recordingTimeout = null;
+            return GLib.SOURCE_REMOVE;
+        });
+
+        const enableNotifications = this._settings.get_boolean('enable-notifications');
+        if (enableNotifications) {
+            Main.notify(_('Voice Type Input'), _('Recording started - speak now!'));
+        }
+    }
+
     async _stopRecording() {
+        // Prevent recursive stop calls
+        if (this._stoppingRecording) {
+            return;
+        }
+        this._stoppingRecording = true;
+        
         try {
             // Clear timeout if active
             if (this.recordingTimeout) {
@@ -138,33 +169,35 @@ class Indicator extends PanelMenu.Button {
                 this.recordingTimeout = null;
             }
             
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            
+            // Only handle file-based recording - streaming disabled
             if (this.pipeline) {
                 // Stop the pipeline
                 this.pipeline.set_state(Gst.State.NULL);
                 this.pipeline = null;
             }
 
-            this.isRecording = false;
-            this.setMicrophoneRecording(false);
-
             if (this.tempFile) {
-                const enableNotifications = this._settings.get_boolean('enable-notifications');
                 if (enableNotifications) {
                     Main.notify(_('Voice Type Input'), _('Processing audio...'));
                 }
                 await this._transcribeAudio();
-            } else {
-                const enableNotifications = this._settings.get_boolean('enable-notifications');
-                if (enableNotifications) {
-                    Main.notify(_('Voice Type Input'), _('Recording stopped'));
-                }
+            } else if (enableNotifications) {
+                Main.notify(_('Voice Type Input'), _('Recording stopped'));
             }
+
+            this.isRecording = false;
+            this.setMicrophoneRecording(false);
+            
         } catch (error) {
             const enableNotifications = this._settings.get_boolean('enable-notifications');
             if (enableNotifications) {
                 Main.notify(_('Voice Type Input'), _('Error stopping recording: ') + error.message);
             }
             console.error('Error stopping recording:', error);
+        } finally {
+            this._stoppingRecording = false;
         }
     }
 
