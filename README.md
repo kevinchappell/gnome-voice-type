@@ -228,6 +228,42 @@ gnome-voice-type-input/
 - Multiple language support
 - Voice command recognition
 
+## Debug Mode
+
+Enable Debug Mode from the extension preferences (Interface Settings → Debug Mode) to open a floating on-screen window when you start recording. In this mode:
+
+- The transcribed text is rendered inside the debug window instead of being typed into the active application.
+- Each character appears with a short delay to simulate keystroke flow.
+- Status lines (e.g. `[info] Recording started`, `[info] Processing audio`) help verify lifecycle events.
+
+### When To Use
+- Verifying that audio capture and transcription are working without risking unintended text being typed into another application
+- Testing inside a nested GNOME session (`./dev.sh nested`)
+- Comparing which insertion mechanism would have been used (ydotool vs clipboard/wtype) – internally tracked as `this._lastTypeMethod`
+
+### Exiting Debug Mode
+- Simply toggle the switch off in preferences; the next recording will resume normal text insertion
+
+### Troubleshooting
+| Symptom | Suggestion |
+|---------|------------|
+| Debug window does not appear | Ensure schema recompiled: `glib-compile-schemas schemas` then reload shell |
+| Text never shows | Check GNOME Shell logs: `./dev.sh logs` and confirm transcription JSON contains a `text` field |
+| Normal typing fails outside debug mode | Verify `wtype` or `ydotool` availability; check `/tmp/.ydotool_socket` when using ydotool |
+| Extension settings not saving | Run `gsettings list-recursively org.gnome.shell.extensions.voice-type-input` to inspect values |
+
+### Manual Toggle (CLI)
+```bash
+gsettings set org.gnome.shell.extensions.voice-type-input debug-mode true
+gsettings set org.gnome.shell.extensions.voice-type-input debug-mode false
+```
+
+If you added the key manually and it does not show, re-run:
+```bash
+glib-compile-schemas schemas
+```
+Then reload the shell (Wayland: Alt+F2, type `r`, Enter).
+
 ## License
 
 This project is open source. Please check the repository for license details.

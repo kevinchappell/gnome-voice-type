@@ -27,5 +27,10 @@
       <summary>Enhanced terminal support</summary>
       <description>Use terminal-specific paste methods for better compatibility with terminal applications</description>
     </key>
+    <key name="debug-mode" type="b">
+      <default>false</default>
+      <summary>Enable debug mode window</summary>
+      <description>When enabled, a debug window will appear and receive typed text instead of the active application, allowing you to verify the transcription and typing method.</description>
+    </key>
   </schema>
 </schemalist>
