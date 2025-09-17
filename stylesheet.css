@@ -146,3 +146,29 @@
 .voice-type-input-combo {
     min-width: 200px;
 }
+
+/* Debug window */
+.voice-type-input-debug-window {
+    background-color: rgba(0,0,0,0.8);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.voice-type-input-debug-title {
+    font-weight: bold;
+    color: #fff;
+}
+
+.voice-type-input-debug-text {
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.2em;
+    color: #c9d1d9;
+}
+
+.voice-type-input-debug-scroll {
+    background-color: rgba(255,255,255,0.04);
+    padding: 4px;
+    border-radius: 4px;
+}

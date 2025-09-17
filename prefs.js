@@ -105,6 +105,17 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         uiGroup.add(terminalSupportRow);
 
+        // Debug mode setting
+        const debugModeRow = new Adw.SwitchRow({
+            title: _('Debug Mode'),
+            subtitle: _('Show a test window to display and simulate typed transcription instead of sending it to the active application'),
+            active: this.getSettings().get_boolean('debug-mode'),
+        });
+        debugModeRow.connect('notify::active', () => {
+            this.getSettings().set_boolean('debug-mode', debugModeRow.get_active());
+        });
+        uiGroup.add(debugModeRow);
+
         // Create an info group with usage instructions
         const infoGroup = new Adw.PreferencesGroup({
             title: _('Usage'),
