@@ -105,6 +105,17 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         uiGroup.add(terminalSupportRow);
 
+        // Mute media during recording setting
+        const muteMediaRow = new Adw.SwitchRow({
+            title: _('Mute Media During Recording'),
+            subtitle: _('Automatically pause playing media players to reduce background noise during voice recording'),
+            active: this.getSettings().get_boolean('mute-media-during-recording'),
+        });
+        muteMediaRow.connect('notify::active', () => {
+            this.getSettings().set_boolean('mute-media-during-recording', muteMediaRow.get_active());
+        });
+        uiGroup.add(muteMediaRow);
+
         // Debug mode setting
         const debugModeRow = new Adw.SwitchRow({
             title: _('Debug Mode'),
@@ -146,5 +157,11 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             subtitle: _('Enhanced terminal support detects terminal applications and uses Ctrl+Shift+V, middle-click, or direct typing for better compatibility.'),
         });
         infoGroup.add(terminalInfoRow);
+
+        const mediaMuteInfoRow = new Adw.ActionRow({
+            title: _('Media Muting'),
+            subtitle: _('When enabled, playing media players are automatically paused during recording to reduce background noise and improve transcription accuracy.'),
+        });
+        infoGroup.add(mediaMuteInfoRow);
     }
 }

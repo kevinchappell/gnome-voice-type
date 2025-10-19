@@ -27,6 +27,11 @@
       <summary>Enhanced terminal support</summary>
       <description>Use terminal-specific paste methods for better compatibility with terminal applications</description>
     </key>
+    <key name="mute-media-during-recording" type="b">
+      <default>true</default>
+      <summary>Mute media during recording</summary>
+      <description>Automatically pause playing media players to reduce background noise during voice recording</description>
+    </key>
     <key name="debug-mode" type="b">
       <default>false</default>
       <summary>Enable debug mode window</summary>
