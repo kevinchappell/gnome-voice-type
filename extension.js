@@ -5,6 +5,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gst from 'gi://Gst';
 import Soup from 'gi://Soup';
+import DBus from 'gi://DBus';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -32,11 +33,9 @@ const Indicator = GObject.registerClass(
 
       this.add_child(this.icon);
 
-      // Recording state
-      this.isRecording = false;
-      this.pipeline = null;
-      this.tempFile = null;
-      this.recordingTimeout = null;
+      // Track media players for muting/unmuting
+      this._mutedPlayers = [];
+      this._mediaMuted = false;
 
       // Recursion guards
       this._togglingRecording = false;
@@ -96,6 +95,9 @@ const Indicator = GObject.registerClass(
           this._ensureDebugWindow();
           this._appendDebugLine('[info] Recording started');
         }
+
+        // Mute media players to reduce background noise
+        this._muteMediaPlayers();
 
         // Force file-based recording only - streaming disabled
         console.debug('Starting file-based recording (streaming disabled)...');
@@ -206,6 +208,9 @@ const Indicator = GObject.registerClass(
 
         this.isRecording = false;
         this.setMicrophoneRecording(false);
+
+        // Resume any muted media players
+        this._unmuteMediaPlayers();
 
       } catch (error) {
         const enableNotifications = this._settings.get_boolean('enable-notifications');
@@ -494,6 +499,129 @@ const Indicator = GObject.registerClass(
           console.debug('Error cleaning up temp file:', error);
         }
         this.tempFile = null;
+      }
+    }
+
+    // Mute media players during recording to reduce background noise
+    _muteMediaPlayers() {
+      const muteMediaEnabled = this._settings.get_boolean('mute-media-during-recording');
+      if (!muteMediaEnabled) {
+        console.debug('Media muting disabled in settings');
+        return;
+      }
+
+      try {
+        console.debug('Attempting to mute media players...');
+
+        // Use MPRIS to pause media players
+        const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
+        const dbus = Gio.DBusProxy.new_sync(
+          bus,
+          Gio.DBusProxyFlags.NONE,
+          null,
+          'org.freedesktop.DBus',
+          '/org/freedesktop/DBus',
+          'org.freedesktop.DBus',
+          null
+        );
+
+        // Get all bus names
+        const [names] = dbus.call_sync(
+          'ListNames',
+          null,
+          Gio.DBusCallFlags.NONE,
+          -1,
+          null
+        );
+
+        const busNames = names.unpack();
+        this._mutedPlayers = [];
+
+        for (const name of busNames) {
+          if (name.startsWith('org.mpris.MediaPlayer2.')) {
+            try {
+              const playerProxy = Gio.DBusProxy.new_sync(
+                bus,
+                Gio.DBusProxyFlags.NONE,
+                null,
+                name,
+                '/org/mpris/MediaPlayer2',
+                'org.mpris.MediaPlayer2.Player',
+                null
+              );
+
+              // Check if playing
+              const playbackStatus = playerProxy.get_cached_property('PlaybackStatus');
+              if (playbackStatus && playbackStatus.unpack() === 'Playing') {
+                console.debug(`Pausing media player: ${name}`);
+                playerProxy.call_sync(
+                  'Pause',
+                  null,
+                  Gio.DBusCallFlags.NONE,
+                  -1,
+                  null
+                );
+                this._mutedPlayers.push(name);
+              }
+            } catch (e) {
+              console.debug(`Failed to pause player ${name}:`, e.message);
+            }
+          }
+        }
+
+        if (this._mutedPlayers.length > 0) {
+          console.debug(`Muted ${this._mutedPlayers.length} media players`);
+          this._mediaMuted = true;
+        } else {
+          console.debug('No playing media players found');
+        }
+
+      } catch (error) {
+        console.debug('Error muting media players:', error.message);
+      }
+    }
+
+    // Resume muted media players
+    _unmuteMediaPlayers() {
+      if (!this._mediaMuted || this._mutedPlayers.length === 0) {
+        return;
+      }
+
+      try {
+        console.debug('Resuming muted media players...');
+        const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
+
+        for (const playerName of this._mutedPlayers) {
+          try {
+            const playerProxy = Gio.DBusProxy.new_sync(
+              bus,
+              Gio.DBusProxyFlags.NONE,
+              null,
+              playerName,
+              '/org/mpris/MediaPlayer2',
+              'org.mpris.MediaPlayer2.Player',
+              null
+            );
+
+            playerProxy.call_sync(
+              'Play',
+              null,
+              Gio.DBusCallFlags.NONE,
+              -1,
+              null
+            );
+            console.debug(`Resumed media player: ${playerName}`);
+          } catch (e) {
+            console.debug(`Failed to resume player ${playerName}:`, e.message);
+          }
+        }
+
+        this._mutedPlayers = [];
+        this._mediaMuted = false;
+        console.debug('Media players resumed');
+
+      } catch (error) {
+        console.debug('Error unmuting media players:', error.message);
       }
     }
 
