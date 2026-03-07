@@ -1,35 +1,39 @@
 # Voice Type Input - GNOME Extension
 
-A GNOME Shell extension that provides voice-to-text input with an audio reactive microphone indicator in the top panel.
+A GNOME Shell extension that provides voice-to-text transcription with seamless text input for GNOME 46+ environments. Featuring an intuitive microphone indicator in the top panel with visual recording feedback and intelligent text insertion.
 
 ## Features
 
-### 🎤 Audio Reactive Microphone Icon
-- **Real-time audio level visualization** with animated bars that respond to voice volume
-- **Recording state indication** with pulsing animation when actively recording
-- **Progressive level indicators** with color-coded bars:
-  - 🟢 Green: Low audio levels
-  - 🟡 Yellow: Medium audio levels  
-  - 🔴 Red: High audio levels
+### 🎤 One-Click Voice Input
+- **Click-to-record** microphone icon in the top panel
+- **Visual recording feedback** with pulsing animation during active recording
+- **Configurable recording time limits** (5-300 seconds) with automatic stop
+- **Smart text insertion** using multiple fallback methods for maximum compatibility
 
-### 🔊 Smart Audio Processing
-- **Automatic echo cancellation** for cleaner audio input
-- **Noise suppression** to filter background sounds
-- **Auto gain control** for consistent volume levels
-- **Smooth audio level transitions** with optimized visual feedback
+### 🔊 Advanced Audio Processing
+- **High-quality audio capture** using GStreamer with configurable quality settings (8kHz to 44.1kHz)
+- **Automatic media muting** during recording to reduce background noise interference
+- **Temporary file-based recording** with automatic cleanup after transcription
+- **Multiple audio quality presets** to balance accuracy vs. bandwidth usage
 
-### 🎯 Interactive Controls
-- **Click to toggle** recording directly from the panel icon
-- **Menu integration** with start/stop voice input options
-- **Visual feedback** throughout the recording process
-- **Accessibility support** with reduced motion options
+### 🎯 Intelligent Text Integration
+- **Direct typing simulation** using ydotool for Wayland compatibility
+- **Enhanced terminal support** with specialized paste methods (Ctrl+Shift+V, middle-click)
+- **Smart application detection** to choose optimal text insertion method
+- **Clipboard fallback** with user notifications when direct typing fails
+- **Debug mode** for testing and validation without affecting active applications
 
 ## Installation
 
 ### Prerequisites
-- GNOME Shell 46 or compatible version
-- Microphone access permissions
-- Audio support (PulseAudio/PipeWire)
+- **GNOME Shell 46+** (Wayland or X11 session)
+- **Speech-to-text API endpoint** (local or remote server)
+- **Microphone access** permissions
+- **Audio support** (PulseAudio/PipeWire)
+- **Optional dependencies**:
+  - `ydotool` for direct typing on Wayland (recommended)
+  - `wtype` for enhanced text insertion
+  - `inotify-tools` for development file watching
 
 ### Quick Install
 ```bash
@@ -40,7 +44,7 @@ cd gnome-voice-type-input
 # Install the extension
 make install
 
-# For testing in a safe nested session (recommended)
+# For testing in a safe nested session (recommended for Wayland)
 make nested
 ```
 
@@ -56,218 +60,277 @@ cp -r * ~/.local/share/gnome-shell/extensions/voice-type-input@kevinchappell.git
 gnome-extensions enable voice-type-input@kevinchappell.github.io
 ```
 
+## Configuration
+
+### Required Setup
+Before using the extension, configure your speech-to-text API endpoint:
+
+1. **Open extension preferences**:
+   ```bash
+   ./dev.sh prefs
+   # OR
+   gnome-extensions prefs voice-type-input@kevinchappell.github.io
+   ```
+
+2. **Set API Endpoint URL**:
+   - Enter your transcription service URL (e.g., `http://localhost:8675`)
+   - The extension automatically appends `/transcribe` to this URL
+   - Supports local servers (Whisper, OpenAI-compatible APIs) or remote services
+
+3. **Configure recording settings**:
+   - **Recording quality**: Low (8kHz), Medium (16kHz), High (44.1kHz)
+   - **Time limit**: 5-300 seconds (default: 30 seconds)
+   - **Media muting**: Auto-pause media players during recording
+   - **Terminal support**: Enhanced paste methods for terminal apps
+
 ## Usage
 
-### Starting Voice Input
-1. **Click the microphone icon** in the top panel, or
-2. **Use the menu** by right-clicking the icon and selecting "Start Voice Input"
+### Basic Operation
+1. **Click the microphone icon** in the top panel to start recording
+2. **Speak clearly** - the icon will pulse red during recording
+3. **Click again to stop** or wait for automatic timeout
+4. **Text appears automatically** at the cursor position in the active application
 
-### During Recording
-- The microphone icon will **pulse with a red glow** to indicate active recording
-- **Three audio level bars** will appear next to the icon showing real-time voice levels:
-  - Bars animate based on your speaking volume
-  - Higher volume activates more bars with increased opacity
-  - Colors progress from green → yellow → red for different volume levels
+### Recording Behavior
+- **Visual feedback**: Pulsing red background indicates active recording
+- **Automatic stop**: Recording stops after configured time limit
+- **Background noise reduction**: Media players are automatically paused
+- **Smart text insertion**: Uses optimal method based on target application
 
-### Stopping Recording
-1. **Click the microphone icon again**, or
-2. **Use the menu** and select "Stop Voice Input"
+## Text Insertion Methods
 
-## Audio Reactive Behavior
+The extension uses intelligent text insertion with multiple fallback methods:
 
-The extension provides rich visual feedback during voice input:
+### Primary Method: Direct Typing
+- **ydotool**: Direct input simulation (recommended for Wayland)
+- **Advantages**: Works in all applications, preserves formatting
+- **Requirements**: `ydotool` package and daemon running
 
-### Recording States
-- **Idle**: Standard microphone icon
-- **Recording**: Pulsing red background with animated audio level bars
-- **Processing**: Visual feedback while audio is being processed
+### Terminal Applications
+- **Enhanced detection**: Automatically identifies terminal applications
+- **Specialized paste methods**:
+  - `Ctrl+Shift+V` for terminal paste
+  - Middle-click for primary selection
+  - Direct typing for short text
 
-### Audio Level Visualization
-- **Bar 1 (Green)**: Activates at 10% audio level - indicates voice detection
-- **Bar 2 (Yellow)**: Activates at 30% audio level - normal speaking volume  
-- **Bar 3 (Red)**: Activates at 60% audio level - loud/peak volume
+### Fallback: Clipboard
+- **Automatic fallback**: When direct typing fails
+- **Dual clipboard**: Sets both primary and clipboard selections
+- **User notification**: Prompts to manually paste with `Ctrl+V`
 
-### Smooth Animations
-- Level bars use smooth opacity transitions (100ms)
-- Recording state transitions with CSS animations
-- Reduced motion support for accessibility
+### Debug Mode
+- **Testing environment**: Displays transcribed text in overlay window
+- **Development tool**: Verify transcription without affecting active apps
+- **Method tracking**: Shows which insertion method was used
 
 ## Development
 
-This extension is built for GNOME 46 and uses modern ES6 modules.
+This extension is built for GNOME 46+ and uses modern ES6 modules with GStreamer for audio capture.
 
-### Development Script (Wayland Compatible)
-
-The project includes a development script (`dev.sh`) that works on Wayland and allows you to install and refresh the extension without logging out:
-
-```bash
-# Install and enable the extension
-./dev.sh install
-
-# Quick reload during development (most useful)
-./dev.sh reload
-
-# Watch for file changes and auto-reload
-./dev.sh watch
-
-# Show GNOME Shell logs
-./dev.sh logs
-
-# Check extension status
-./dev.sh status
-
-# Disable/enable
-./dev.sh disable
-./dev.sh enable
-
-# Uninstall
-./dev.sh uninstall
+### Project Structure
+```
+gnome-voice-type-input/
+├── extension.js       # Main extension logic with Indicator class
+├── prefs.js          # Settings UI using Adwaita (Adw) components
+├── metadata.json     # Extension metadata and GNOME Shell compatibility
+├── stylesheet.css    # Custom styles for recording states and animations
+├── dev.sh           # Development script for Wayland-compatible workflows
+├── Makefile         # Make targets for common development tasks
+├── package.json     # npm scripts and project metadata
+├── validate.sh      # Extension validation without GNOME Shell
+└── schemas/         # GSettings schema for user preferences
+    └── org.gnome.shell.extensions.voice-type-input.gschema.xml
 ```
 
-Alternative ways to run the development commands:
-
-```bash
-# Using Make
-make install
-make reload
-make watch
-make logs
-
-# Using npm scripts
-npm run install
-npm run reload
-npm run dev    # same as watch
-npm run logs
-```
+### Key Technologies
+- **GObject Introspection**: St, Clutter, Gio, GLib integration
+- **GStreamer**: High-quality audio recording with configurable pipelines
+- **Soup**: HTTP multipart file uploads for transcription API calls
+- **D-Bus**: Media player control and system integration
+- **GSettings**: User preferences with compiled schema validation
 
 ### Development Workflow
 
+**Quick Start:**
+```bash
+# Install dependencies (Ubuntu/Debian)
+sudo apt install inotify-tools libglib2.0-dev ydotool
+
+# Clone and setup
+git clone https://github.com/kevinchappell/gnome-voice-type-input.git
+cd gnome-voice-type-input
+
+# Install extension
+./dev.sh install
+
+# Start development with auto-reload
+./dev.sh watch
+```
+
+**Available Commands:**
+```bash
+# Development
+./dev.sh install    # Install and enable extension
+./dev.sh reload     # Quick reload during development
+./dev.sh watch      # Auto-reload on file changes
+./dev.sh nested     # Test in nested GNOME Shell (Wayland-safe)
+./dev.sh test       # Auto-enable in nested session
+
+# Debugging
+./dev.sh logs       # Show GNOME Shell logs
+./dev.sh status     # Check extension status
+./dev.sh prefs      # Open preferences dialog
+./dev.sh debug      # Detailed validation and troubleshooting
+
+# Management
+./dev.sh enable     # Enable extension
+./dev.sh disable    # Disable extension
+./dev.sh uninstall  # Remove extension
+./dev.sh validate   # Validate without running GNOME Shell
+```
+
+**Make Targets (Alternative):**
+```bash
+make install   # Same as ./dev.sh install
+make watch     # Same as ./dev.sh watch
+make nested    # Same as ./dev.sh nested
+make logs      # Same as ./dev.sh logs
+```
+
+**NPM Scripts (Alternative):**
+```bash
+npm run install    # ./dev.sh install
+npm run dev        # ./dev.sh watch
+npm run logs       # ./dev.sh logs
+```
+
+### Testing Workflows
+
 **For Wayland (Recommended):**
+```bash
+# Test in safe nested session
+./dev.sh nested
+# Inside nested session: enable extension and test
 
-1. **Test in nested session** (this is the official recommended approach):
-   ```bash
-   ./dev.sh nested
-   ```
-   This opens a new GNOME Shell window where you can test the extension safely.
-
-2. **Auto-test in nested session:**
-   ```bash
-   ./dev.sh test
-   ```
-   This automatically enables the extension in a nested session.
-
-3. **During development with nested testing:**
-   ```bash
-   # Install the extension
-   ./dev.sh install
-   
-   # Test in nested session
-   ./dev.sh nested
-   
-   # Inside the nested session terminal:
-   gnome-extensions enable voice-type-input@kevinchappell.github.io
-   ```
+# Auto-test with extension enabled
+./dev.sh test
+```
 
 **For X11 Sessions:**
+```bash
+# Install and auto-reload during development
+./dev.sh watch
 
-1. **Initial setup:**
-   ```bash
-   ./dev.sh install
-   ```
-
-2. **During development:**
-   ```bash
-   ./dev.sh watch
-   ```
-   This will automatically reload the extension whenever you modify files.
-
-3. **Manual reload when needed:**
-   ```bash
-   ./dev.sh reload
-   ```
-
-**General Development:**
-
-4. **Monitor logs for debugging:**
-   ```bash
-   ./dev.sh logs
-   ```
-
-### Requirements for Development
-
-- For file watching: `inotify-tools` package
-  ```bash
-  # Ubuntu/Debian
-  sudo apt install inotify-tools
-  
-  # Fedora
-  sudo dnf install inotify-tools
-  
-  # Arch
-  sudo pacman -S inotify-tools
-  ```
-
-### File Structure
-
-```
-gnome-voice-type-input/
-├── metadata.json      # Extension metadata and compatibility info
-├── extension.js       # Main extension logic
-├── stylesheet.css     # Custom styles for the extension
-├── dev.sh            # Development script for Wayland
-├── Makefile          # Make targets for development
-├── package.json      # npm scripts for development
-└── README.md         # This file
+# Manual reload when needed
+./dev.sh reload
 ```
 
-### Future Enhancements
+**Validation and Debugging:**
+```bash
+# Validate extension without starting GNOME Shell
+./validate.sh
 
-- Integration with speech recognition services
-- Customizable keyboard shortcuts
-- Settings panel for configuration
-- Multiple language support
-- Voice command recognition
+# Debug extension state and compatibility
+./dev.sh debug
+
+# Monitor real-time logs
+./dev.sh logs
+```
+
+## API Requirements
+
+### Speech-to-Text Endpoint
+The extension requires a compatible transcription API endpoint that:
+
+1. **Accepts HTTP POST** requests to `/transcribe` endpoint
+2. **Supports multipart/form-data** file uploads with `file` field
+3. **Returns JSON response** with `text` field containing transcribed text
+4. **Audio format**: WAV files (configurable sample rates: 8kHz, 16kHz, 44.1kHz)
+
+### Example API Response
+```json
+{
+  "text": "Hello world, this is the transcribed text."
+}
+```
+
+### Compatible Services
+- **Local Whisper servers** (OpenAI Whisper, faster-whisper, whisper.cpp)
+- **OpenAI-compatible APIs** with transcription endpoints
+- **Custom transcription services** following the expected format
+- **Self-hosted solutions** like Vosk, wav2vec2, or similar
+
+### Example Local Setup
+```bash
+# Using faster-whisper server
+pip install faster-whisper-server
+faster-whisper-server --port 8675
+
+# Configure extension endpoint to: http://localhost:8675
+```
 
 ## Debug Mode
 
-Enable Debug Mode from the extension preferences (Interface Settings → Debug Mode) to open a floating on-screen window when you start recording. In this mode:
+Enable Debug Mode from the extension preferences to test transcription without affecting active applications.
 
-- The transcribed text is rendered inside the debug window instead of being typed into the active application.
-- Each character appears with a short delay to simulate keystroke flow.
-- Status lines (e.g. `[info] Recording started`, `[info] Processing audio`) help verify lifecycle events.
+### Features
+- **Floating overlay window** displays transcribed text instead of typing into active application
+- **Status tracking** shows recording lifecycle events (`[info] Recording started`, `[info] Processing audio`)
+- **Method verification** internally tracks which text insertion method would have been used
+- **Safe testing** prevents unintended text insertion during development
 
-### When To Use
-- Verifying that audio capture and transcription are working without risking unintended text being typed into another application
-- Testing inside a nested GNOME session (`./dev.sh nested`)
-- Comparing which insertion mechanism would have been used (ydotool vs clipboard/wtype) – internally tracked as `this._lastTypeMethod`
+### Usage
+1. **Enable in preferences**: Open extension preferences and toggle "Debug Mode"
+2. **Start recording**: Click microphone icon as normal
+3. **View results**: Debug window appears showing transcribed text and status
+4. **Disable when done**: Toggle off to resume normal text insertion
 
-### Exiting Debug Mode
-- Simply toggle the switch off in preferences; the next recording will resume normal text insertion
+### When to Use
+- **Testing transcription accuracy** without risking text insertion in important applications
+- **Development and debugging** of the extension itself
+- **Nested session testing** where normal typing might not work as expected
+- **API endpoint validation** to verify transcription service is working
 
-### Troubleshooting
-| Symptom | Suggestion |
-|---------|------------|
-| Debug window does not appear | Ensure schema recompiled: `glib-compile-schemas schemas` then reload shell |
-| Text never shows | Check GNOME Shell logs: `./dev.sh logs` and confirm transcription JSON contains a `text` field |
-| Normal typing fails outside debug mode | Verify `wtype` or `ydotool` availability; check `/tmp/.ydotool_socket` when using ydotool |
-| Extension settings not saving | Run `gsettings list-recursively org.gnome.shell.extensions.voice-type-input` to inspect values |
-
-### Manual Toggle (CLI)
+### CLI Toggle
 ```bash
+# Enable debug mode
 gsettings set org.gnome.shell.extensions.voice-type-input debug-mode true
-gsettings set org.gnome.shell.extensions.voice-type-input debug-mode false
-```
 
-If you added the key manually and it does not show, re-run:
-```bash
+# Disable debug mode  
+gsettings set org.gnome.shell.extensions.voice-type-input debug-mode false
+
+# Recompile schema if needed
 glib-compile-schemas schemas
 ```
-Then reload the shell (Wayland: Alt+F2, type `r`, Enter).
 
 ## License
 
-This project is open source. Please check the repository for license details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
+
+### Development Setup
+1. **Fork the repository** on GitHub
+2. **Clone your fork**: `git clone https://github.com/YOUR_USERNAME/gnome-voice-type-input.git`
+3. **Create a feature branch**: `git checkout -b feature/your-feature-name`
+4. **Make your changes** and test with `./dev.sh nested`
+5. **Validate your changes**: `./validate.sh`
+6. **Commit and push**: `git commit -m "Add your feature" && git push origin feature/your-feature-name`
+7. **Submit a pull request** on GitHub
+
+### Code Guidelines
+- **Follow ES6 standards** for JavaScript code
+- **Use GObject patterns** for GNOME Shell integration
+- **Test in nested sessions** before submitting
+- **Validate with provided scripts** (`./validate.sh`, `./dev.sh debug`)
+- **Update documentation** for any new features or configuration options
+
+### Reporting Issues
+When reporting issues, please include:
+- **GNOME Shell version**: `gnome-shell --version`
+- **Extension logs**: Output from `./dev.sh logs`
+- **System information**: OS, display server (Wayland/X11), audio system
+- **Steps to reproduce** the issue
+- **Expected vs actual behavior**
