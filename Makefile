@@ -1,6 +1,8 @@
 # Makefile for GNOME Extension Development
 
-.PHONY: install reload enable disable status watch nested test logs uninstall clean help
+UUID = voice-type-input@kevinchappell.github.io
+
+.PHONY: install reload enable disable status watch nested test logs uninstall clean pack schemas help
 
 # Default target
 install:
@@ -30,6 +32,14 @@ test:
 
 logs:
 	@./dev.sh logs
+
+# Build targets
+schemas:
+	glib-compile-schemas schemas/
+
+pack: schemas
+	@rm -f $(UUID).zip
+	@zip -r $(UUID).zip extension.js prefs.js metadata.json stylesheet.css schemas/ LICENSE
 
 # Cleanup targets
 uninstall:
