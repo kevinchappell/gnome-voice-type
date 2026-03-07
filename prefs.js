@@ -142,7 +142,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
         const endpointInfoRow = new Adw.ActionRow({
             title: _('Endpoint Format'),
-            subtitle: _('Enter the base URL (e.g., http://localhost:8675). The extension will automatically append "/transcribe" to this URL.'),
+            subtitle: _('Enter the base URL (e.g., http://localhost:8675). The extension will automatically append "/v1/audio/transcriptions" to this URL.'),
         });
         infoGroup.add(endpointInfoRow);
 

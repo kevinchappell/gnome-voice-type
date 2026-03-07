@@ -234,9 +234,9 @@ const Indicator = GObject.registerClass(
         const endpointUrl = this._settings.get_string('endpoint-url');
         const enableNotifications = this._settings.get_boolean('enable-notifications');
 
-        // Ensure URL doesn't end with slash and add /transcribe
+        // Ensure URL doesn't end with slash and add OpenAI-compatible path
         const baseUrl = endpointUrl.replace(/\/$/, '');
-        const fullUrl = `${baseUrl}/transcribe`;
+        const fullUrl = `${baseUrl}/v1/audio/transcriptions`;
 
         // Use Soup for HTTP multipart upload instead of external curl
         const fileInfo = file.query_info('standard::*', Gio.FileQueryInfoFlags.NONE, null);
@@ -247,6 +247,7 @@ const Indicator = GObject.registerClass(
 
         const multipart = Soup.Multipart.new('multipart/form-data');
         multipart.append_form_file('file', fileInfo.get_name(), 'audio/wav', fileContent);
+        multipart.append_form_string('response_format', 'json');
 
         const message = Soup.Message.new_from_multipart(fullUrl, multipart);
         message.request_headers.append('accept', 'application/json');
