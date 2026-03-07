@@ -5,7 +5,6 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gst from 'gi://Gst';
 import Soup from 'gi://Soup';
-import DBus from 'gi://DBus';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -259,8 +258,8 @@ const Indicator = GObject.registerClass(
               const bytes = sess.send_and_read_finish(res);
               const statusCode = message.get_status();
               if (statusCode >= 200 && statusCode < 300) {
-                const ByteArray = imports.byteArray;
-                const bodyText = ByteArray.toString(bytes.get_data());
+                const decoder = new TextDecoder('utf-8');
+                const bodyText = decoder.decode(bytes.get_data());
                 try {
                   resolve(JSON.parse(bodyText));
                 } catch (e) {
@@ -268,8 +267,8 @@ const Indicator = GObject.registerClass(
                   reject(new Error('Invalid JSON response'));
                 }
               } else {
-                const ByteArray = imports.byteArray;
-                const bodyText = ByteArray.toString(bytes.get_data());
+                const decoder = new TextDecoder('utf-8');
+                const bodyText = decoder.decode(bytes.get_data());
                 reject(new Error(`HTTP ${statusCode}: ${bodyText || 'Request failed'}`));
               }
             } catch (err) {
