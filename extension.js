@@ -5,6 +5,8 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gst from 'gi://Gst';
 import Soup from 'gi://Soup';
+import Shell from 'gi://Shell';
+import Meta from 'gi://Meta';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -315,6 +317,13 @@ const Indicator = GObject.registerClass(
           this._appendDebugLine(`[text] ${text}`);
           this._simulateDebugTyping(text);
           if (onComplete) onComplete();
+          return;
+        }
+
+        const autoInsert = this._settings.get_boolean('auto-insert');
+        if (!autoInsert) {
+          console.debug('Auto-insert disabled, copying to clipboard only');
+          this._fallbackToClipboard(text);
           return;
         }
 
@@ -817,9 +826,24 @@ export default class VoiceTypeInputExtension extends Extension {
   enable() {
     this._indicator = new Indicator(this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
+
+    // Register keyboard shortcut for toggling recording
+    this._settings = this.getSettings();
+    Main.wm.addKeybinding(
+      'toggle-recording-shortcut',
+      this._settings,
+      Meta.KeyBindingFlags.NONE,
+      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+      () => {
+        this._indicator._toggleRecording();
+      }
+    );
   }
 
   disable() {
+    // Remove keybinding
+    Main.wm.removeKeybinding('toggle-recording-shortcut');
+
     if (this._indicator) {
       // Remove from panel first to prevent further interactions
       if (Main.panel?.statusArea?.[this.uuid]) {
@@ -835,5 +859,7 @@ export default class VoiceTypeInputExtension extends Extension {
 
       this._indicator = null;
     }
+
+    this._settings = null;
   }
 }
