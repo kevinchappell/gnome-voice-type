@@ -37,5 +37,15 @@
       <summary>Enable debug mode window</summary>
       <description>When enabled, a debug window will appear and receive typed text instead of the active application, allowing you to verify the transcription and typing method.</description>
     </key>
+    <key name="toggle-recording-shortcut" type="as">
+      <default>['&lt;Ctrl&gt;&lt;Alt&gt;v']</default>
+      <summary>Toggle recording shortcut</summary>
+      <description>Keyboard shortcut to toggle voice recording on/off</description>
+    </key>
+    <key name="auto-insert" type="b">
+      <default>true</default>
+      <summary>Auto-insert transcribed text</summary>
+      <description>Automatically type or paste transcribed text into the focused application. When disabled, text is only copied to the clipboard.</description>
+    </key>
   </schema>
 </schemalist>

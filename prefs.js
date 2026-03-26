@@ -116,6 +116,17 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         uiGroup.add(muteMediaRow);
 
+        // Auto-insert setting
+        const autoInsertRow = new Adw.SwitchRow({
+            title: _('Auto-Insert Text'),
+            subtitle: _('Automatically type or paste transcribed text into the focused application. When disabled, text is only copied to the clipboard.'),
+            active: this.getSettings().get_boolean('auto-insert'),
+        });
+        autoInsertRow.connect('notify::active', () => {
+            this.getSettings().set_boolean('auto-insert', autoInsertRow.get_active());
+        });
+        uiGroup.add(autoInsertRow);
+
         // Debug mode setting
         const debugModeRow = new Adw.SwitchRow({
             title: _('Debug Mode'),
@@ -127,6 +138,99 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         uiGroup.add(debugModeRow);
 
+        // Create a preferences group for keyboard shortcuts
+        const shortcutGroup = new Adw.PreferencesGroup({
+            title: _('Keyboard Shortcut'),
+            description: _('Configure a keyboard shortcut to toggle voice recording'),
+        });
+        page.add(shortcutGroup);
+
+        // Toggle recording shortcut
+        const shortcutRow = new Adw.ActionRow({
+            title: _('Toggle Recording'),
+            subtitle: _('Press the shortcut key combination to start/stop recording'),
+        });
+
+        const currentShortcuts = this.getSettings().get_strv('toggle-recording-shortcut');
+        const shortcutLabel = new Gtk.ShortcutLabel({
+            accelerator: currentShortcuts.length > 0 ? currentShortcuts[0] : '',
+            disabled_text: _('Disabled'),
+            valign: Gtk.Align.CENTER,
+        });
+
+        const editButton = new Gtk.Button({
+            label: _('Set'),
+            valign: Gtk.Align.CENTER,
+        });
+
+        const clearButton = new Gtk.Button({
+            icon_name: 'edit-clear-symbolic',
+            valign: Gtk.Align.CENTER,
+            tooltip_text: _('Clear shortcut'),
+        });
+
+        clearButton.connect('clicked', () => {
+            this.getSettings().set_strv('toggle-recording-shortcut', []);
+            shortcutLabel.set_accelerator('');
+        });
+
+        editButton.connect('clicked', () => {
+            const dialog = new Gtk.Dialog({
+                title: _('Set Shortcut'),
+                modal: true,
+                transient_for: window,
+                default_width: 400,
+                default_height: 200,
+            });
+
+            const contentArea = dialog.get_content_area();
+            contentArea.set_spacing(12);
+            contentArea.append(new Gtk.Label({
+                label: _('Press the desired key combination for toggling voice recording.\n\nPress Escape to cancel or Backspace to disable the shortcut.'),
+                wrap: true,
+                margin_top: 20,
+                margin_start: 20,
+                margin_end: 20,
+            }));
+
+            const controller = new Gtk.EventControllerKey();
+            controller.connect('key-pressed', (_ctrl, keyval, keycode, state) => {
+                // Filter out modifier-only presses
+                const modifiers = state & Gtk.accelerator_get_default_mod_mask();
+
+                if (keyval === Gtk.accelerator_name_with_keycode(null, keyval, keycode, 0) === 'Escape' || keyval === 0xff1b) {
+                    dialog.close();
+                    return true;
+                }
+
+                if (keyval === 0xff08) { // Backspace - disable shortcut
+                    this.getSettings().set_strv('toggle-recording-shortcut', []);
+                    shortcutLabel.set_accelerator('');
+                    dialog.close();
+                    return true;
+                }
+
+                // Require at least one modifier for the shortcut
+                if (modifiers === 0) return true;
+
+                const accel = Gtk.accelerator_name(keyval, modifiers);
+                if (accel) {
+                    this.getSettings().set_strv('toggle-recording-shortcut', [accel]);
+                    shortcutLabel.set_accelerator(accel);
+                    dialog.close();
+                }
+                return true;
+            });
+
+            dialog.add_controller(controller);
+            dialog.present();
+        });
+
+        shortcutRow.add_suffix(shortcutLabel);
+        shortcutRow.add_suffix(editButton);
+        shortcutRow.add_suffix(clearButton);
+        shortcutGroup.add(shortcutRow);
+
         // Create an info group with usage instructions
         const infoGroup = new Adw.PreferencesGroup({
             title: _('Usage'),
@@ -136,7 +240,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
         const usageRow = new Adw.ActionRow({
             title: _('Instructions'),
-            subtitle: _('Click the microphone icon in the top panel to start/stop recording. Recording will automatically stop after the time limit. Transcribed text will be automatically typed at the cursor position.'),
+            subtitle: _('Click the microphone icon in the top panel or use the keyboard shortcut to start/stop recording. Recording will automatically stop after the time limit. Transcribed text will be automatically typed at the cursor position.'),
         });
         infoGroup.add(usageRow);
 
