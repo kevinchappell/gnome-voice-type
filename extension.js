@@ -358,27 +358,10 @@ const Indicator = GObject.registerClass(
         const focusWindow = display.get_focus_window();
 
         if (focusWindow && this._isTerminalApplication(focusWindow.get_wm_class(), focusWindow.get_title())) {
-          console.debug('Detected terminal application, trying Ctrl+Shift+V');
-          // Terminal: try Ctrl+Shift+V first, then middle click, then standard paste
-          this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', '-M', 'shift', 'v', '-m', 'shift', '-m', 'ctrl'], (success) => {
-            if (success) {
-              console.debug('Ctrl+Shift+V succeeded');
-              this._lastTypeMethod = 'wtype:ctrl-shift-v';
-              if (onComplete) onComplete();
-              return;
-            }
-            console.debug('Ctrl+Shift+V failed, trying middle click');
-            this._tryAsyncSubprocess(['wtype', '-k', 'Button2'], (success2) => {
-              if (success2) {
-                console.debug('Middle click succeeded');
-                this._lastTypeMethod = 'wtype:button2';
-                if (onComplete) onComplete();
-                return;
-              }
-              console.debug('Middle click failed, trying standard Ctrl+V');
-              this._tryStandardPaste(text, onComplete);
-            });
-          });
+          console.debug('Detected terminal application, using Ctrl+Shift+V');
+          this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_Shift_L, Clutter.KEY_v]);
+          this._lastTypeMethod = 'clutter:ctrl-shift-v';
+          if (onComplete) onComplete();
           return;
         } else {
           console.debug('Not a terminal application or no focus window');
@@ -389,18 +372,29 @@ const Indicator = GObject.registerClass(
     }
 
     _tryStandardPaste(text, onComplete) {
-      console.debug('Trying standard Ctrl+V paste');
-      this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'], (success) => {
-        if (success) {
-          console.debug('Ctrl+V succeeded');
-          this._lastTypeMethod = 'wtype:ctrl-v';
-          if (onComplete) onComplete();
-          return;
+      console.debug('Trying standard Ctrl+V paste via Clutter virtual keyboard');
+      this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_v]);
+      this._lastTypeMethod = 'clutter:ctrl-v';
+      if (onComplete) onComplete();
+    }
+
+    _simulateKeyCombo(keyvals) {
+      try {
+        const seat = Clutter.get_default_backend().get_default_seat();
+        const virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        const time = Clutter.get_current_event_time();
+
+        // Press all keys
+        for (let i = 0; i < keyvals.length; i++) {
+          virtualDevice.notify_keyval(time + i, keyvals[i], Clutter.KeyState.PRESSED);
         }
-        console.debug('Ctrl+V failed, falling back to clipboard notification');
-        this._fallbackToClipboard(text);
-        if (onComplete) onComplete();
-      });
+        // Release all keys in reverse order
+        for (let i = keyvals.length - 1; i >= 0; i--) {
+          virtualDevice.notify_keyval(time + keyvals.length + (keyvals.length - 1 - i), keyvals[i], Clutter.KeyState.RELEASED);
+        }
+      } catch (e) {
+        console.debug('Clutter key simulation failed:', e.message);
+      }
     }
 
     _tryAsyncSubprocess(commands, callback) {
