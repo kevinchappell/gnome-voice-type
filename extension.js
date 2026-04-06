@@ -21,6 +21,9 @@ const Indicator = GObject.registerClass(
       // Track signal connections for cleanup
       this._signalConnections = [];
 
+      // Cancellable for async subprocess calls (ydotool/wtype)
+      this._subprocessCancellable = new Gio.Cancellable();
+
       // Initialize GStreamer
       Gst.init(null);
 
@@ -282,10 +285,11 @@ const Indicator = GObject.registerClass(
 
         if (json.text) {
           // Type the transcribed text
-          this._typeText(json.text.trim());
-          if (enableNotifications) {
-            Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
-          }
+          this._typeText(json.text.trim(), () => {
+            if (enableNotifications) {
+              Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
+            }
+          });
         } else if (enableNotifications) {
           Main.notify(_('Voice Type Input'), _('No speech detected'));
         }
@@ -302,7 +306,7 @@ const Indicator = GObject.registerClass(
       }
     }
 
-    _typeText(text) {
+    _typeText(text, onComplete) {
       try {
         console.debug(`_typeText called with text length: ${text.length}, debug mode: ${this._debugMode}`);
 
@@ -310,28 +314,33 @@ const Indicator = GObject.registerClass(
           console.debug('Using debug mode typing');
           this._appendDebugLine(`[text] ${text}`);
           this._simulateDebugTyping(text);
+          if (onComplete) onComplete();
           return;
         }
 
         console.debug('Trying ydotool typing...');
-        if (this._tryTypeWithYdotool(text)) {
-          console.debug('ydotool typing succeeded');
-          this._lastTypeMethod = 'ydotool';
-          return;
-        }
-        console.debug('ydotool typing failed, falling back to clipboard + paste');
+        this._tryTypeWithYdotool(text, (success) => {
+          if (success) {
+            console.debug('ydotool typing succeeded');
+            this._lastTypeMethod = 'ydotool';
+            if (onComplete) onComplete();
+            return;
+          }
+          console.debug('ydotool typing failed, falling back to clipboard + paste');
 
-        const clipboard = St.Clipboard.get_default();
-        clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
-        clipboard.set_text(St.ClipboardType.PRIMARY, text);
-        this._smartPaste(text);
+          const clipboard = St.Clipboard.get_default();
+          clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+          clipboard.set_text(St.ClipboardType.PRIMARY, text);
+          this._smartPaste(text, onComplete);
+        });
       } catch (error) {
         console.error('Error typing text:', error);
         this._fallbackToClipboard(text);
+        if (onComplete) onComplete();
       }
     }
 
-    _smartPaste(text) {
+    _smartPaste(text, onComplete) {
       const enhancedTerminalSupport = this._settings.get_boolean('enhanced-terminal-support');
       console.debug(`_smartPaste called, enhanced terminal support: ${enhancedTerminalSupport}`);
 
@@ -341,45 +350,70 @@ const Indicator = GObject.registerClass(
 
         if (focusWindow && this._isTerminalApplication(focusWindow.get_wm_class(), focusWindow.get_title())) {
           console.debug('Detected terminal application, trying Ctrl+Shift+V');
-          // Terminal: try Ctrl+Shift+V first
-          if (this._trySyncSubprocess(['wtype', '-M', 'ctrl', '-M', 'shift', 'v', '-m', 'shift', '-m', 'ctrl'])) {
-            console.debug('Ctrl+Shift+V succeeded');
-            this._lastTypeMethod = 'wtype:ctrl-shift-v';
-            return;
-          }
-          console.debug('Ctrl+Shift+V failed, trying middle click');
-          // Then try middle click (Button2)
-          if (this._trySyncSubprocess(['wtype', '-k', 'Button2'])) {
-            console.debug('Middle click succeeded');
-            this._lastTypeMethod = 'wtype:button2';
-            return;
-          }
-          console.debug('Middle click failed');
+          // Terminal: try Ctrl+Shift+V first, then middle click, then standard paste
+          this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', '-M', 'shift', 'v', '-m', 'shift', '-m', 'ctrl'], (success) => {
+            if (success) {
+              console.debug('Ctrl+Shift+V succeeded');
+              this._lastTypeMethod = 'wtype:ctrl-shift-v';
+              if (onComplete) onComplete();
+              return;
+            }
+            console.debug('Ctrl+Shift+V failed, trying middle click');
+            this._tryAsyncSubprocess(['wtype', '-k', 'Button2'], (success2) => {
+              if (success2) {
+                console.debug('Middle click succeeded');
+                this._lastTypeMethod = 'wtype:button2';
+                if (onComplete) onComplete();
+                return;
+              }
+              console.debug('Middle click failed, trying standard Ctrl+V');
+              this._tryStandardPaste(text, onComplete);
+            });
+          });
+          return;
         } else {
           console.debug('Not a terminal application or no focus window');
         }
       }
 
-      console.debug('Trying standard Ctrl+V paste');
-      // Standard paste: try Ctrl+V
-      if (this._trySyncSubprocess(['wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'])) {
-        console.debug('Ctrl+V succeeded');
-        this._lastTypeMethod = 'wtype:ctrl-v';
-        return;
-      }
-      console.debug('Ctrl+V failed, falling back to clipboard notification');
-
-      // Final fallback to clipboard
-      this._fallbackToClipboard(text);
+      this._tryStandardPaste(text, onComplete);
     }
 
-    _trySyncSubprocess(commands) {
+    _tryStandardPaste(text, onComplete) {
+      console.debug('Trying standard Ctrl+V paste');
+      this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'], (success) => {
+        if (success) {
+          console.debug('Ctrl+V succeeded');
+          this._lastTypeMethod = 'wtype:ctrl-v';
+          if (onComplete) onComplete();
+          return;
+        }
+        console.debug('Ctrl+V failed, falling back to clipboard notification');
+        this._fallbackToClipboard(text);
+        if (onComplete) onComplete();
+      });
+    }
+
+    _tryAsyncSubprocess(commands, callback) {
       try {
+        if (!this._subprocessCancellable || this._destroying) {
+          callback(false);
+          return;
+        }
         const proc = Gio.Subprocess.new(commands, Gio.SubprocessFlags.NONE);
-        return proc.wait_check(null);
+        proc.wait_check_async(this._subprocessCancellable, (_proc, result) => {
+          if (this._destroying) return;
+          try {
+            const success = _proc.wait_check_finish(result);
+            callback(success);
+          } catch (error) {
+            console.debug(`Subprocess failed for ${commands[0]}:`, error.message);
+            callback(false);
+          }
+        });
       } catch (error) {
-        console.debug(`Subprocess failed for ${commands[0]}:`, error.message);
-        return false;
+        console.debug(`Subprocess launch failed for ${commands[0]}:`, error.message);
+        callback(false);
       }
     }
 
@@ -394,30 +428,23 @@ const Indicator = GObject.registerClass(
     }
 
     // Try to type text directly using ydotool (Wayland-friendly via uinput)
-    _tryTypeWithYdotool(text) {
+    _tryTypeWithYdotool(text, callback) {
       try {
-        if (!text || !this._hasProgram('ydotool')) return false;
-        if (text.length > 180) return false; // large chunks faster via paste
-
-        // Test if ydotool daemon is available by trying a simple command
-        const testProc = Gio.Subprocess.new(['ydotool', '--help'], Gio.SubprocessFlags.NONE);
-        if (!testProc.wait_check(null)) {
-          console.debug('ydotool daemon not available');
-          return false;
+        if (!text || !this._hasProgram('ydotool')) {
+          callback(false);
+          return;
+        }
+        if (text.length > 180) {
+          callback(false);
+          return;
         }
 
         const delay = text.length > 60 ? 800 : 300; // microseconds between keys
         const args = ['ydotool', 'type', '-p', '0', '-d', String(delay), text];
-        const proc = Gio.Subprocess.new(args, Gio.SubprocessFlags.NONE);
-        const success = proc.wait_check(null);
-        if (success) {
-          this._lastTypeMethod = 'ydotool';
-          return true;
-        }
-        return false;
+        this._tryAsyncSubprocess(args, callback);
       } catch (e) {
         console.debug('ydotool typing failed:', e.message);
-        return false;
+        callback(false);
       }
     }
 
@@ -640,6 +667,12 @@ const Indicator = GObject.registerClass(
         return;
       }
       this._destroying = true;
+
+      // Cancel any in-flight async subprocess calls
+      if (this._subprocessCancellable) {
+        this._subprocessCancellable.cancel();
+        this._subprocessCancellable = null;
+      }
 
       // Stop recording if active
       if (this.isRecording) {
