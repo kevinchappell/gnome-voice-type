@@ -21,6 +21,9 @@ const Indicator = GObject.registerClass(
       // Track signal connections for cleanup
       this._signalConnections = [];
 
+      // Cancellable for async subprocess calls (ydotool/wtype)
+      this._subprocessCancellable = new Gio.Cancellable();
+
       // Initialize GStreamer
       Gst.init(null);
 
@@ -282,10 +285,11 @@ const Indicator = GObject.registerClass(
 
         if (json.text) {
           // Type the transcribed text
-          this._typeText(json.text.trim());
-          if (enableNotifications) {
-            Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
-          }
+          this._typeText(json.text.trim(), () => {
+            if (enableNotifications) {
+              Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
+            }
+          });
         } else if (enableNotifications) {
           Main.notify(_('Voice Type Input'), _('No speech detected'));
         }
@@ -302,7 +306,7 @@ const Indicator = GObject.registerClass(
       }
     }
 
-    _typeText(text) {
+    _typeText(text, onComplete) {
       try {
         console.debug(`_typeText called with text length: ${text.length}, debug mode: ${this._debugMode}`);
 
@@ -310,6 +314,7 @@ const Indicator = GObject.registerClass(
           console.debug('Using debug mode typing');
           this._appendDebugLine(`[text] ${text}`);
           this._simulateDebugTyping(text);
+          if (onComplete) onComplete();
           return;
         }
 
@@ -318,6 +323,7 @@ const Indicator = GObject.registerClass(
           if (success) {
             console.debug('ydotool typing succeeded');
             this._lastTypeMethod = 'ydotool';
+            if (onComplete) onComplete();
             return;
           }
           console.debug('ydotool typing failed, falling back to clipboard + paste');
@@ -325,15 +331,16 @@ const Indicator = GObject.registerClass(
           const clipboard = St.Clipboard.get_default();
           clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
           clipboard.set_text(St.ClipboardType.PRIMARY, text);
-          this._smartPaste(text);
+          this._smartPaste(text, onComplete);
         });
       } catch (error) {
         console.error('Error typing text:', error);
         this._fallbackToClipboard(text);
+        if (onComplete) onComplete();
       }
     }
 
-    _smartPaste(text) {
+    _smartPaste(text, onComplete) {
       const enhancedTerminalSupport = this._settings.get_boolean('enhanced-terminal-support');
       console.debug(`_smartPaste called, enhanced terminal support: ${enhancedTerminalSupport}`);
 
@@ -348,6 +355,7 @@ const Indicator = GObject.registerClass(
             if (success) {
               console.debug('Ctrl+Shift+V succeeded');
               this._lastTypeMethod = 'wtype:ctrl-shift-v';
+              if (onComplete) onComplete();
               return;
             }
             console.debug('Ctrl+Shift+V failed, trying middle click');
@@ -355,10 +363,11 @@ const Indicator = GObject.registerClass(
               if (success2) {
                 console.debug('Middle click succeeded');
                 this._lastTypeMethod = 'wtype:button2';
+                if (onComplete) onComplete();
                 return;
               }
               console.debug('Middle click failed, trying standard Ctrl+V');
-              this._tryStandardPaste(text);
+              this._tryStandardPaste(text, onComplete);
             });
           });
           return;
@@ -367,26 +376,33 @@ const Indicator = GObject.registerClass(
         }
       }
 
-      this._tryStandardPaste(text);
+      this._tryStandardPaste(text, onComplete);
     }
 
-    _tryStandardPaste(text) {
+    _tryStandardPaste(text, onComplete) {
       console.debug('Trying standard Ctrl+V paste');
       this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'], (success) => {
         if (success) {
           console.debug('Ctrl+V succeeded');
           this._lastTypeMethod = 'wtype:ctrl-v';
+          if (onComplete) onComplete();
           return;
         }
         console.debug('Ctrl+V failed, falling back to clipboard notification');
         this._fallbackToClipboard(text);
+        if (onComplete) onComplete();
       });
     }
 
     _tryAsyncSubprocess(commands, callback) {
       try {
+        if (!this._subprocessCancellable || this._destroying) {
+          callback(false);
+          return;
+        }
         const proc = Gio.Subprocess.new(commands, Gio.SubprocessFlags.NONE);
-        proc.wait_check_async(null, (_proc, result) => {
+        proc.wait_check_async(this._subprocessCancellable, (_proc, result) => {
+          if (this._destroying) return;
           try {
             const success = _proc.wait_check_finish(result);
             callback(success);
@@ -651,6 +667,12 @@ const Indicator = GObject.registerClass(
         return;
       }
       this._destroying = true;
+
+      // Cancel any in-flight async subprocess calls
+      if (this._subprocessCancellable) {
+        this._subprocessCancellable.cancel();
+        this._subprocessCancellable = null;
+      }
 
       // Stop recording if active
       if (this.isRecording) {
