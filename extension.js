@@ -440,7 +440,15 @@ const Indicator = GObject.registerClass(
         }
 
         const delay = text.length > 60 ? 800 : 300; // microseconds between keys
-        const args = ['ydotool', 'type', '-p', '0', '-d', String(delay), text];
+        // Sanitize text: remove null bytes and other control chars that crash ydotool
+        const sanitized = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+        if (!sanitized) {
+          callback(false);
+          return;
+        }
+        // Use -- to prevent text starting with '-' from being parsed as flags
+        // Use -p 1 instead of -p 0 to avoid SIGABRT in some ydotool versions
+        const args = ['ydotool', 'type', '-p', '1', '-d', String(delay), '--', sanitized];
         this._tryAsyncSubprocess(args, callback);
       } catch (e) {
         console.debug('ydotool typing failed:', e.message);
