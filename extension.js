@@ -349,10 +349,22 @@ const Indicator = GObject.registerClass(
         const focusWindow = display.get_focus_window();
 
         if (focusWindow && this._isTerminalApplication(focusWindow.get_wm_class(), focusWindow.get_title())) {
-          console.debug('Detected terminal application, using Ctrl+Shift+V');
-          this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_Shift_L, Clutter.KEY_v]);
-          this._lastTypeMethod = 'clutter:ctrl-shift-v';
-          if (onComplete) onComplete();
+          console.debug('Detected terminal application, trying Ctrl+Shift+V');
+          if (this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_Shift_L, Clutter.KEY_v])) {
+            this._lastTypeMethod = 'clutter:ctrl-shift-v';
+            if (onComplete) onComplete();
+            return;
+          }
+          // Clutter failed, try wtype for non-GNOME compositors
+          this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', '-M', 'shift', 'v', '-m', 'shift', '-m', 'ctrl'], (success) => {
+            if (success) {
+              this._lastTypeMethod = 'wtype:ctrl-shift-v';
+              if (onComplete) onComplete();
+              return;
+            }
+            console.debug('Terminal paste failed, trying standard paste');
+            this._tryStandardPaste(text, onComplete);
+          });
           return;
         } else {
           console.debug('Not a terminal application or no focus window');
@@ -363,10 +375,24 @@ const Indicator = GObject.registerClass(
     }
 
     _tryStandardPaste(text, onComplete) {
-      console.debug('Trying standard Ctrl+V paste via Clutter virtual keyboard');
-      this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_v]);
-      this._lastTypeMethod = 'clutter:ctrl-v';
-      if (onComplete) onComplete();
+      console.debug('Trying standard Ctrl+V paste');
+      // Try Clutter first (works natively in GNOME Shell on both X11 and Wayland)
+      if (this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_v])) {
+        this._lastTypeMethod = 'clutter:ctrl-v';
+        if (onComplete) onComplete();
+        return;
+      }
+      // Fall back to wtype for non-GNOME compositors
+      this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'], (success) => {
+        if (success) {
+          this._lastTypeMethod = 'wtype:ctrl-v';
+          if (onComplete) onComplete();
+          return;
+        }
+        console.debug('All paste methods failed, falling back to clipboard notification');
+        this._fallbackToClipboard(text);
+        if (onComplete) onComplete();
+      });
     }
 
     _simulateKeyCombo(keyvals) {
@@ -383,8 +409,10 @@ const Indicator = GObject.registerClass(
         for (let i = keyvals.length - 1; i >= 0; i--) {
           virtualDevice.notify_keyval(time + keyvals.length + (keyvals.length - 1 - i), keyvals[i], Clutter.KeyState.RELEASED);
         }
+        return true;
       } catch (e) {
         console.debug('Clutter key simulation failed:', e.message);
+        return false;
       }
     }
 
