@@ -568,7 +568,7 @@ const Indicator = GObject.registerClass(
       }
     }
 
-    // Mute media players during recording to reduce background noise
+    // Pause MPRIS media players during recording to reduce background noise
     _muteMediaPlayers() {
       const muteMediaEnabled = this._settings.get_boolean('mute-media-during-recording');
       if (!muteMediaEnabled) {
@@ -577,117 +577,122 @@ const Indicator = GObject.registerClass(
       }
 
       try {
-        console.debug('Attempting to mute media players...');
+        console.log('Voice Type Input: checking MPRIS media players to pause');
 
-        // Use MPRIS to pause media players
         const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
-        const dbus = Gio.DBusProxy.new_sync(
-          bus,
-          Gio.DBusProxyFlags.NONE,
-          null,
+
+        // List bus names to find MPRIS players
+        const namesResult = bus.call_sync(
           'org.freedesktop.DBus',
           '/org/freedesktop/DBus',
           'org.freedesktop.DBus',
-          null
-        );
-
-        // Get all bus names
-        const [names] = dbus.call_sync(
           'ListNames',
           null,
+          new GLib.VariantType('(as)'),
           Gio.DBusCallFlags.NONE,
           -1,
           null
         );
+        const busNames = namesResult.get_child_value(0).deep_unpack();
 
-        const busNames = names.unpack();
         this._mutedPlayers = [];
 
         for (const name of busNames) {
-          if (name.startsWith('org.mpris.MediaPlayer2.')) {
-            try {
-              const playerProxy = Gio.DBusProxy.new_sync(
-                bus,
-                Gio.DBusProxyFlags.NONE,
-                null,
-                name,
-                '/org/mpris/MediaPlayer2',
-                'org.mpris.MediaPlayer2.Player',
-                null
-              );
+          if (!name.startsWith('org.mpris.MediaPlayer2.')) continue;
 
-              // Check if playing
-              const playbackStatus = playerProxy.get_cached_property('PlaybackStatus');
-              if (playbackStatus && playbackStatus.unpack() === 'Playing') {
-                console.debug(`Pausing media player: ${name}`);
-                playerProxy.call_sync(
-                  'Pause',
-                  null,
-                  Gio.DBusCallFlags.NONE,
-                  -1,
-                  null
-                );
-                this._mutedPlayers.push(name);
-              }
-            } catch (e) {
-              console.debug(`Failed to pause player ${name}:`, e.message);
-            }
+          // Query PlaybackStatus directly via Properties.Get instead of
+          // relying on DBusProxy's cached properties. Some MPRIS
+          // implementations (notably browser-based players like Firefox
+          // and Chromium running YouTube Music) don't return all
+          // properties from GetAll, so the cached value is null and the
+          // "Playing" check silently fails.
+          let playbackStatus = null;
+          try {
+            const statusResult = bus.call_sync(
+              name,
+              '/org/mpris/MediaPlayer2',
+              'org.freedesktop.DBus.Properties',
+              'Get',
+              new GLib.Variant('(ss)', ['org.mpris.MediaPlayer2.Player', 'PlaybackStatus']),
+              new GLib.VariantType('(v)'),
+              Gio.DBusCallFlags.NONE,
+              -1,
+              null
+            );
+            const innerVariant = statusResult.get_child_value(0).get_variant();
+            playbackStatus = innerVariant.get_string()[0];
+          } catch (e) {
+            console.log(`Voice Type Input: failed to query PlaybackStatus for ${name}: ${e.message}`);
+            continue;
+          }
+
+          console.log(`Voice Type Input: MPRIS player ${name} status=${playbackStatus}`);
+
+          if (playbackStatus !== 'Playing') continue;
+
+          try {
+            bus.call_sync(
+              name,
+              '/org/mpris/MediaPlayer2',
+              'org.mpris.MediaPlayer2.Player',
+              'Pause',
+              null,
+              null,
+              Gio.DBusCallFlags.NONE,
+              -1,
+              null
+            );
+            this._mutedPlayers.push(name);
+            console.log(`Voice Type Input: paused ${name}`);
+          } catch (e) {
+            console.log(`Voice Type Input: failed to pause ${name}: ${e.message}`);
           }
         }
 
         if (this._mutedPlayers.length > 0) {
-          console.debug(`Muted ${this._mutedPlayers.length} media players`);
           this._mediaMuted = true;
         } else {
-          console.debug('No playing media players found');
+          console.log('Voice Type Input: no playing MPRIS media players found');
         }
 
       } catch (error) {
-        console.debug('Error muting media players:', error.message);
+        console.log(`Voice Type Input: error pausing media players: ${error.message}`);
       }
     }
 
-    // Resume muted media players
+    // Resume previously paused media players
     _unmuteMediaPlayers() {
       if (!this._mediaMuted || this._mutedPlayers.length === 0) {
         return;
       }
 
       try {
-        console.debug('Resuming muted media players...');
         const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
 
         for (const playerName of this._mutedPlayers) {
           try {
-            const playerProxy = Gio.DBusProxy.new_sync(
-              bus,
-              Gio.DBusProxyFlags.NONE,
-              null,
+            bus.call_sync(
               playerName,
               '/org/mpris/MediaPlayer2',
               'org.mpris.MediaPlayer2.Player',
-              null
-            );
-
-            playerProxy.call_sync(
               'Play',
+              null,
               null,
               Gio.DBusCallFlags.NONE,
               -1,
               null
             );
-            console.debug(`Resumed media player: ${playerName}`);
+            console.log(`Voice Type Input: resumed ${playerName}`);
           } catch (e) {
-            console.debug(`Failed to resume player ${playerName}:`, e.message);
+            console.log(`Voice Type Input: failed to resume ${playerName}: ${e.message}`);
           }
         }
 
         this._mutedPlayers = [];
         this._mediaMuted = false;
-        console.debug('Media players resumed');
 
       } catch (error) {
-        console.debug('Error unmuting media players:', error.message);
+        console.log(`Voice Type Input: error resuming media players: ${error.message}`);
       }
     }
 
