@@ -37,9 +37,9 @@ const Indicator = GObject.registerClass(
 
       this.add_child(this.icon);
 
-      // Track media players for muting/unmuting
-      this._mutedPlayers = [];
-      this._mediaMuted = false;
+      // Track media players for pausing/resuming
+      this._pausedPlayers = [];
+      this._mediaPaused = false;
 
       // Recursion guards
       this._togglingRecording = false;
@@ -100,8 +100,8 @@ const Indicator = GObject.registerClass(
           this._appendDebugLine('[info] Recording started');
         }
 
-        // Mute media players to reduce background noise
-        this._muteMediaPlayers();
+        // Pause media players to reduce background noise
+        this._pauseMediaPlayers();
 
         // Force file-based recording only - streaming disabled
         console.debug('Starting file-based recording (streaming disabled)...');
@@ -213,8 +213,8 @@ const Indicator = GObject.registerClass(
         this.isRecording = false;
         this.setMicrophoneRecording(false);
 
-        // Resume any muted media players
-        this._unmuteMediaPlayers();
+        // Resume any paused media players
+        this._resumeMediaPlayers();
 
       } catch (error) {
         const enableNotifications = this._settings.get_boolean('enable-notifications');
@@ -569,15 +569,15 @@ const Indicator = GObject.registerClass(
     }
 
     // Pause MPRIS media players during recording to reduce background noise
-    _muteMediaPlayers() {
-      const muteMediaEnabled = this._settings.get_boolean('mute-media-during-recording');
-      if (!muteMediaEnabled) {
-        console.debug('Media muting disabled in settings');
+    _pauseMediaPlayers() {
+      const pauseMediaEnabled = this._settings.get_boolean('mute-media-during-recording');
+      if (!pauseMediaEnabled) {
+        console.debug('Media pause during recording disabled in settings');
         return;
       }
 
       try {
-        console.log('Voice Type Input: checking MPRIS media players to pause');
+        console.debug('Voice Type Input: checking MPRIS media players to pause');
 
         const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
 
@@ -595,7 +595,7 @@ const Indicator = GObject.registerClass(
         );
         const busNames = namesResult.get_child_value(0).deep_unpack();
 
-        this._mutedPlayers = [];
+        this._pausedPlayers = [];
 
         for (const name of busNames) {
           if (!name.startsWith('org.mpris.MediaPlayer2.')) continue;
@@ -622,11 +622,11 @@ const Indicator = GObject.registerClass(
             const innerVariant = statusResult.get_child_value(0).get_variant();
             playbackStatus = innerVariant.get_string()[0];
           } catch (e) {
-            console.log(`Voice Type Input: failed to query PlaybackStatus for ${name}: ${e.message}`);
+            console.debug(`Voice Type Input: failed to query PlaybackStatus for ${name}: ${e.message}`);
             continue;
           }
 
-          console.log(`Voice Type Input: MPRIS player ${name} status=${playbackStatus}`);
+          console.debug(`Voice Type Input: MPRIS player ${name} status=${playbackStatus}`);
 
           if (playbackStatus !== 'Playing') continue;
 
@@ -642,34 +642,34 @@ const Indicator = GObject.registerClass(
               -1,
               null
             );
-            this._mutedPlayers.push(name);
-            console.log(`Voice Type Input: paused ${name}`);
+            this._pausedPlayers.push(name);
+            console.debug(`Voice Type Input: paused ${name}`);
           } catch (e) {
-            console.log(`Voice Type Input: failed to pause ${name}: ${e.message}`);
+            console.debug(`Voice Type Input: failed to pause ${name}: ${e.message}`);
           }
         }
 
-        if (this._mutedPlayers.length > 0) {
-          this._mediaMuted = true;
+        if (this._pausedPlayers.length > 0) {
+          this._mediaPaused = true;
         } else {
-          console.log('Voice Type Input: no playing MPRIS media players found');
+          console.debug('Voice Type Input: no playing MPRIS media players found');
         }
 
       } catch (error) {
-        console.log(`Voice Type Input: error pausing media players: ${error.message}`);
+        console.error('Voice Type Input: error pausing media players:', error);
       }
     }
 
     // Resume previously paused media players
-    _unmuteMediaPlayers() {
-      if (!this._mediaMuted || this._mutedPlayers.length === 0) {
+    _resumeMediaPlayers() {
+      if (!this._mediaPaused || this._pausedPlayers.length === 0) {
         return;
       }
 
       try {
         const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
 
-        for (const playerName of this._mutedPlayers) {
+        for (const playerName of this._pausedPlayers) {
           try {
             bus.call_sync(
               playerName,
@@ -682,17 +682,17 @@ const Indicator = GObject.registerClass(
               -1,
               null
             );
-            console.log(`Voice Type Input: resumed ${playerName}`);
+            console.debug(`Voice Type Input: resumed ${playerName}`);
           } catch (e) {
-            console.log(`Voice Type Input: failed to resume ${playerName}: ${e.message}`);
+            console.debug(`Voice Type Input: failed to resume ${playerName}: ${e.message}`);
           }
         }
 
-        this._mutedPlayers = [];
-        this._mediaMuted = false;
+        this._pausedPlayers = [];
+        this._mediaPaused = false;
 
       } catch (error) {
-        console.log(`Voice Type Input: error resuming media players: ${error.message}`);
+        console.error('Voice Type Input: error resuming media players:', error);
       }
     }
 
