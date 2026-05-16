@@ -6,6 +6,9 @@ import Soup from 'gi://Soup';
 /**
  * Build the full transcription URL from a base URL.
  * Handles trailing slashes and optional /v1 suffix.
+ *
+ * Note: This is prescriptive by design. The extension targets
+ * OpenAI-compatible endpoints which use /v1/audio/transcriptions.
  */
 function buildTranscriptionUrl(baseUrl) {
     const normalized = baseUrl.replace(/\/+$/, '');
@@ -30,8 +33,17 @@ const PROVIDER_DEFAULTS = {
     },
 };
 
+const SECRET_SCHEMA = new Secret.Schema(
+    'org.gnome.shell.extensions.voice-type-input',
+    Secret.SchemaFlags.NONE,
+    { 'key-type': Secret.SchemaAttributeType.STRING }
+);
+
 export default class ApiClient {
     constructor(baseUrl, model) {
+        if (!baseUrl) {
+            throw new Error('baseUrl is required. Provide a customBaseUrl for custom provider.');
+        }
         this.baseUrl = baseUrl;
         this.model = model || 'whisper-1';
     }
@@ -49,12 +61,7 @@ export default class ApiClient {
      */
     _getApiKey() {
         try {
-            const schema = new Secret.Schema(
-                'org.gnome.shell.extensions.voice-type-input',
-                Secret.SchemaFlags.NONE,
-                { 'key-type': Secret.SchemaAttributeType.STRING }
-            );
-            const key = Secret.password_lookup_sync(schema, { 'key-type': 'api-key' }, null);
+            const key = Secret.password_lookup_sync(SECRET_SCHEMA, { 'key-type': 'api-key' }, null);
             return key || null;
         } catch (e) {
             console.warn('Voice Type Input: Secret Service unavailable, proceeding without auth:', e.message);
@@ -69,11 +76,6 @@ export default class ApiClient {
      */
     async transcribe(tempFile) {
         const file = Gio.File.new_for_path(tempFile);
-        if (!file.query_exists(null)) {
-            throw new Error('Audio file not found');
-        }
-
-        const fileInfo = file.query_info('standard::*', Gio.FileQueryInfoFlags.NONE, null);
         const [success, fileContent] = file.load_contents(null);
         if (!success) {
             throw new Error('Failed to load audio file');
@@ -83,7 +85,7 @@ export default class ApiClient {
         const apiKey = this._getApiKey();
 
         const multipart = Soup.Multipart.new('multipart/form-data');
-        multipart.append_form_file('file', fileInfo.get_name(), 'audio/wav', fileContent);
+        multipart.append_form_file('file', GLib.path_get_basename(tempFile), 'audio/wav', fileContent);
         multipart.append_form_string('model', this.model);
         multipart.append_form_string('response_format', 'json');
 
@@ -94,32 +96,35 @@ export default class ApiClient {
         }
 
         const session = Soup.Session.new();
-        const json = await new Promise((resolve, reject) => {
-            session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
-                try {
-                    const bytes = sess.send_and_read_finish(res);
-                    const statusCode = message.get_status();
-                    if (statusCode >= 200 && statusCode < 300) {
-                        const decoder = new TextDecoder('utf-8');
-                        const bodyText = decoder.decode(bytes.get_data());
-                        try {
-                            resolve(JSON.parse(bodyText));
-                        } catch (e) {
-                            console.debug('JSON parse failed:', e.message);
-                            reject(new Error('Invalid JSON response'));
-                        }
-                    } else {
-                        const decoder = new TextDecoder('utf-8');
-                        const bodyText = decoder.decode(bytes.get_data());
-                        reject(new Error(`HTTP ${statusCode}: ${bodyText || 'Request failed'}`));
-                    }
-                } catch (err) {
-                    reject(err);
-                }
-            });
-        });
+        session.set_timeout(30);
 
-        session.abort();
+        let json;
+        try {
+            json = await new Promise((resolve, reject) => {
+                session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
+                    try {
+                        const bytes = sess.send_and_read_finish(res);
+                        const statusCode = message.get_status();
+                        const decoder = new TextDecoder('utf-8');
+                        const bodyText = decoder.decode(bytes.get_data());
+                        if (statusCode >= 200 && statusCode < 300) {
+                            try {
+                                resolve(JSON.parse(bodyText));
+                            } catch (e) {
+                                console.debug('JSON parse failed:', e.message);
+                                reject(new Error('Invalid JSON response'));
+                            }
+                        } else {
+                            reject(new Error(`HTTP ${statusCode}: ${bodyText || 'Request failed'}`));
+                        }
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
+            });
+        } finally {
+            session.abort();
+        }
 
         if (!json.text) {
             return null;
