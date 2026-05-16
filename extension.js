@@ -327,7 +327,17 @@ const Indicator = GObject.registerClass(
           return;
         }
 
-        console.debug('Trying ydotool typing...');
+        // Prefer Clutter virtual-keyboard typing: it runs inside gnome-shell,
+        // so it works on GNOME Wayland without ydotool/wtype.
+        console.debug('Trying Clutter virtual-keyboard typing...');
+        if (this._tryTypeWithClutter(text)) {
+          console.debug('Clutter typing succeeded');
+          this._lastTypeMethod = 'clutter:type';
+          if (onComplete) onComplete();
+          return;
+        }
+
+        console.debug('Clutter typing unavailable, trying ydotool...');
         this._tryTypeWithYdotool(text, (success) => {
           if (success) {
             console.debug('ydotool typing succeeded');
@@ -336,17 +346,69 @@ const Indicator = GObject.registerClass(
             return;
           }
           console.debug('ydotool typing failed, falling back to clipboard + paste');
-
-          const clipboard = St.Clipboard.get_default();
-          clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
-          clipboard.set_text(St.ClipboardType.PRIMARY, text);
-          this._smartPaste(text, onComplete);
+          this._pasteViaClipboard(text, onComplete);
         });
       } catch (error) {
         console.error('Error typing text:', error);
         this._fallbackToClipboard(text);
         if (onComplete) onComplete();
       }
+    }
+
+    // Save current clipboards, write the transcription, paste, then optionally
+    // restore the previous clipboard contents so we don't trample the user's copy buffer.
+    _pasteViaClipboard(text, onComplete) {
+      const clipboard = St.Clipboard.get_default();
+      const keepClipboard = this._settings.get_boolean('keep-clipboard-after-paste');
+
+      const readClipboard = (type) => new Promise((resolve) => {
+        try {
+          clipboard.get_text(type, (_cb, savedText) => resolve(savedText ?? ''));
+        } catch (_e) {
+          resolve('');
+        }
+      });
+
+      Promise.all([
+        readClipboard(St.ClipboardType.CLIPBOARD),
+        readClipboard(St.ClipboardType.PRIMARY),
+      ]).then(([savedClip, savedPrimary]) => {
+        clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+        clipboard.set_text(St.ClipboardType.PRIMARY, text);
+
+        const afterPaste = (pasteSucceeded) => {
+          if (!pasteSucceeded) {
+            // Nothing got pasted — leave the transcription on the clipboard so
+            // the user can paste it manually, and notify.
+            this._lastTypeMethod = 'clipboard';
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
+            if (enableNotifications) {
+              Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V or middle-click'));
+            }
+            if (onComplete) onComplete();
+            return;
+          }
+
+          if (keepClipboard) {
+            if (onComplete) onComplete();
+            return;
+          }
+
+          // Give the target app a moment to consume the paste before restoring.
+          GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            try {
+              clipboard.set_text(St.ClipboardType.CLIPBOARD, savedClip);
+              clipboard.set_text(St.ClipboardType.PRIMARY, savedPrimary);
+            } catch (e) {
+              console.debug('Clipboard restore failed:', e.message);
+            }
+            if (onComplete) onComplete();
+            return GLib.SOURCE_REMOVE;
+          });
+        };
+
+        this._smartPaste(text, afterPaste);
+      });
     }
 
     _smartPaste(text, onComplete) {
@@ -361,14 +423,14 @@ const Indicator = GObject.registerClass(
           console.debug('Detected terminal application, trying Ctrl+Shift+V');
           if (this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_Shift_L, Clutter.KEY_v])) {
             this._lastTypeMethod = 'clutter:ctrl-shift-v';
-            if (onComplete) onComplete();
+            if (onComplete) onComplete(true);
             return;
           }
           // Clutter failed, try wtype for non-GNOME compositors
           this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', '-M', 'shift', 'v', '-m', 'shift', '-m', 'ctrl'], (success) => {
             if (success) {
               this._lastTypeMethod = 'wtype:ctrl-shift-v';
-              if (onComplete) onComplete();
+              if (onComplete) onComplete(true);
               return;
             }
             console.debug('Terminal paste failed, trying standard paste');
@@ -388,19 +450,18 @@ const Indicator = GObject.registerClass(
       // Try Clutter first (works natively in GNOME Shell on both X11 and Wayland)
       if (this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_v])) {
         this._lastTypeMethod = 'clutter:ctrl-v';
-        if (onComplete) onComplete();
+        if (onComplete) onComplete(true);
         return;
       }
       // Fall back to wtype for non-GNOME compositors
       this._tryAsyncSubprocess(['wtype', '-M', 'ctrl', 'v', '-m', 'ctrl'], (success) => {
         if (success) {
           this._lastTypeMethod = 'wtype:ctrl-v';
-          if (onComplete) onComplete();
+          if (onComplete) onComplete(true);
           return;
         }
-        console.debug('All paste methods failed, falling back to clipboard notification');
-        this._fallbackToClipboard(text);
-        if (onComplete) onComplete();
+        console.debug('All paste methods failed');
+        if (onComplete) onComplete(false);
       });
     }
 
@@ -458,14 +519,49 @@ const Indicator = GObject.registerClass(
       }
     }
 
-    // Try to type text directly using ydotool (Wayland-friendly via uinput)
+    // Type arbitrary text using the Clutter virtual keyboard device. This runs
+    // inside gnome-shell, so it works on GNOME Wayland without ydotool/wtype
+    // (which can't type into other windows because Mutter doesn't expose the
+    // virtual-keyboard or input-method Wayland protocols).
+    _tryTypeWithClutter(text) {
+      try {
+        if (!text) return false;
+        const seat = Clutter.get_default_backend().get_default_seat();
+        const virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        let time = Clutter.get_current_event_time();
+
+        for (const ch of text) {
+          const code = ch.codePointAt(0);
+          let keyval;
+          if (code === 0x0a) {
+            keyval = Clutter.KEY_Return;
+          } else if (code === 0x09) {
+            keyval = Clutter.KEY_Tab;
+          } else if (code === 0x08) {
+            keyval = Clutter.KEY_BackSpace;
+          } else if (code < 0x20 || code === 0x7f) {
+            // Skip other control characters.
+            continue;
+          } else {
+            // X11 Unicode keysym convention: 0x01000000 | codepoint.
+            keyval = 0x01000000 | code;
+          }
+          virtualDevice.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED);
+          virtualDevice.notify_keyval(time++, keyval, Clutter.KeyState.RELEASED);
+        }
+        return true;
+      } catch (e) {
+        console.debug('Clutter typing failed:', e.message);
+        return false;
+      }
+    }
+
+    // Try to type text directly using ydotool (Wayland-friendly via uinput).
+    // Used as a fallback for non-GNOME compositors where the Clutter virtual
+    // device isn't available.
     _tryTypeWithYdotool(text, callback) {
       try {
         if (!text || !this._hasProgram('ydotool')) {
-          callback(false);
-          return;
-        }
-        if (text.length > 180) {
           callback(false);
           return;
         }
