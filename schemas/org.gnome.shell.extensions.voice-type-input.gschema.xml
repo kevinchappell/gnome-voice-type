@@ -6,6 +6,16 @@
       <summary>API endpoint URL</summary>
       <description>The URL of the speech-to-text API endpoint (without the /transcribe path)</description>
     </key>
+    <key name="api-provider" type="s">
+      <default>'custom'</default>
+      <summary>API provider</summary>
+      <description>API provider preset: openai, openrouter, or custom</description>
+    </key>
+    <key name="api-model" type="s">
+      <default>'whisper-1'</default>
+      <summary>Transcription model</summary>
+      <description>Model name sent to the transcription API</description>
+    </key>
     <key name="recording-quality" type="s">
       <default>'medium'</default>
       <summary>Recording quality</summary>
