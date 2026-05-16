@@ -127,6 +127,17 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         uiGroup.add(autoInsertRow);
 
+        // Keep clipboard after paste setting
+        const keepClipboardRow = new Adw.SwitchRow({
+            title: _('Keep Transcription on Clipboard'),
+            subtitle: _('When auto-insert falls back to clipboard+paste, leave the transcribed text on the clipboard. When off, the previous clipboard text is restored (non-text clipboard contents such as images cannot be preserved).'),
+            active: this.getSettings().get_boolean('keep-clipboard-after-paste'),
+        });
+        keepClipboardRow.connect('notify::active', () => {
+            this.getSettings().set_boolean('keep-clipboard-after-paste', keepClipboardRow.get_active());
+        });
+        uiGroup.add(keepClipboardRow);
+
         // Debug mode setting
         const debugModeRow = new Adw.SwitchRow({
             title: _('Debug Mode'),
