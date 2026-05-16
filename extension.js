@@ -356,16 +356,21 @@ const Indicator = GObject.registerClass(
     }
 
     // Save current clipboards, write the transcription, paste, then optionally
-    // restore the previous clipboard contents so we don't trample the user's copy buffer.
+    // restore the previous clipboard text so we don't trample the user's copy buffer.
+    // Non-text clipboard contents (images, files) can't be read back via
+    // St.Clipboard.get_text and so can't be preserved — we resolve to null in
+    // that case and skip the restore for that selection rather than wiping it
+    // to an empty string.
     _pasteViaClipboard(text, onComplete) {
       const clipboard = St.Clipboard.get_default();
       const keepClipboard = this._settings.get_boolean('keep-clipboard-after-paste');
+      const finish = () => { if (onComplete) onComplete(); };
 
       const readClipboard = (type) => new Promise((resolve) => {
         try {
-          clipboard.get_text(type, (_cb, savedText) => resolve(savedText ?? ''));
+          clipboard.get_text(type, (_cb, savedText) => resolve(savedText ?? null));
         } catch (_e) {
-          resolve('');
+          resolve(null);
         }
       });
 
@@ -385,29 +390,47 @@ const Indicator = GObject.registerClass(
             if (enableNotifications) {
               Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V or middle-click'));
             }
-            if (onComplete) onComplete();
+            finish();
             return;
           }
 
           if (keepClipboard) {
-            if (onComplete) onComplete();
+            finish();
             return;
           }
 
           // Give the target app a moment to consume the paste before restoring.
           GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
-            try {
-              clipboard.set_text(St.ClipboardType.CLIPBOARD, savedClip);
-              clipboard.set_text(St.ClipboardType.PRIMARY, savedPrimary);
-            } catch (e) {
-              console.debug('Clipboard restore failed:', e.message);
-            }
-            if (onComplete) onComplete();
+            // Only restore if the selection still holds the transcription we
+            // wrote — otherwise the user or app has put something newer there
+            // and we shouldn't overwrite it.
+            const maybeRestore = (type, saved) => {
+              if (saved === null) return;
+              try {
+                clipboard.get_text(type, (_cb, current) => {
+                  if (current !== text) return;
+                  try {
+                    clipboard.set_text(type, saved);
+                  } catch (e) {
+                    console.debug('Clipboard restore failed:', e.message);
+                  }
+                });
+              } catch (e) {
+                console.debug('Clipboard restore check failed:', e.message);
+              }
+            };
+            maybeRestore(St.ClipboardType.CLIPBOARD, savedClip);
+            maybeRestore(St.ClipboardType.PRIMARY, savedPrimary);
+            finish();
             return GLib.SOURCE_REMOVE;
           });
         };
 
         this._smartPaste(text, afterPaste);
+      }).catch((e) => {
+        console.error('Clipboard paste path failed:', e);
+        this._fallbackToClipboard(text);
+        finish();
       });
     }
 

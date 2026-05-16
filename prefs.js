@@ -130,7 +130,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         // Keep clipboard after paste setting
         const keepClipboardRow = new Adw.SwitchRow({
             title: _('Keep Transcription on Clipboard'),
-            subtitle: _('When auto-insert falls back to clipboard+paste, leave the transcribed text on the clipboard. When off, the previous clipboard contents are restored.'),
+            subtitle: _('When auto-insert falls back to clipboard+paste, leave the transcribed text on the clipboard. When off, the previous clipboard text is restored (non-text clipboard contents such as images cannot be preserved).'),
             active: this.getSettings().get_boolean('keep-clipboard-after-paste'),
         });
         keepClipboardRow.connect('notify::active', () => {
