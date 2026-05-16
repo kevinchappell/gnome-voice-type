@@ -47,5 +47,10 @@
       <summary>Auto-insert transcribed text</summary>
       <description>Automatically type or paste transcribed text into the focused application. When disabled, text is only copied to the clipboard.</description>
     </key>
+    <key name="keep-clipboard-after-paste" type="b">
+      <default>false</default>
+      <summary>Keep transcription on clipboard after paste</summary>
+      <description>When auto-insert uses the clipboard+paste fallback, keep the transcribed text on the clipboard afterwards. When disabled (default), the previous clipboard text is restored so the transcription is not left behind. Non-text clipboard contents (images, files) cannot be preserved.</description>
+    </key>
   </schema>
 </schemalist>
