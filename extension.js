@@ -4,12 +4,12 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gst from 'gi://Gst';
-import Soup from 'gi://Soup';
 import Shell from 'gi://Shell';
 import Meta from 'gi://Meta';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import ApiClient from './apiClient.js';
 
 const Indicator = GObject.registerClass(
   class Indicator extends PanelMenu.Button {
@@ -228,84 +228,37 @@ const Indicator = GObject.registerClass(
     }
 
     async _transcribeAudio() {
-      try {
-        // Check if file exists
-        const file = Gio.File.new_for_path(this.tempFile);
-        if (!file.query_exists(null)) {
-          throw new Error('Audio file not found');
-        }
+        try {
+            const provider = this._settings.get_string('api-provider');
+            const baseUrl = this._settings.get_string('endpoint-url');
+            const model = this._settings.get_string('api-model');
 
-        // Get endpoint URL from settings
-        const endpointUrl = this._settings.get_string('endpoint-url');
-        const enableNotifications = this._settings.get_boolean('enable-notifications');
+            const client = ApiClient.forProvider(provider, baseUrl, model);
+            const text = await client.transcribe(this.tempFile);
 
-        // Ensure URL doesn't end with slash and add OpenAI-compatible path
-        const baseUrl = endpointUrl.replace(/\/$/, '');
-        const fullUrl = `${baseUrl}/v1/audio/transcriptions`;
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
 
-        // Use Soup for HTTP multipart upload instead of external curl
-        const fileInfo = file.query_info('standard::*', Gio.FileQueryInfoFlags.NONE, null);
-        const [success, fileContent] = file.load_contents(null);
-        if (!success) {
-          throw new Error('Failed to load audio file');
-        }
-
-        const multipart = Soup.Multipart.new('multipart/form-data');
-        multipart.append_form_file('file', fileInfo.get_name(), 'audio/wav', fileContent);
-        multipart.append_form_string('response_format', 'json');
-
-        const message = Soup.Message.new_from_multipart(fullUrl, multipart);
-        message.request_headers.append('accept', 'application/json');
-
-        const session = Soup.Session.new();
-        const json = await new Promise((resolve, reject) => {
-          session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
-            try {
-              const bytes = sess.send_and_read_finish(res);
-              const statusCode = message.get_status();
-              if (statusCode >= 200 && statusCode < 300) {
-                const decoder = new TextDecoder('utf-8');
-                const bodyText = decoder.decode(bytes.get_data());
-                try {
-                  resolve(JSON.parse(bodyText));
-                } catch (e) {
-                  console.debug('JSON parse failed:', e.message);
-                  reject(new Error('Invalid JSON response'));
+            if (text === null) {
+                if (enableNotifications) {
+                    Main.notify(_('Voice Type Input'), _('No speech detected'));
                 }
-              } else {
-                const decoder = new TextDecoder('utf-8');
-                const bodyText = decoder.decode(bytes.get_data());
-                reject(new Error(`HTTP ${statusCode}: ${bodyText || 'Request failed'}`));
-              }
-            } catch (err) {
-              reject(err);
+                return;
             }
-          });
-        });
 
-        session.abort(); // Clean up session
-
-        if (json.text) {
-          // Type the transcribed text
-          this._typeText(json.text.trim(), () => {
+            this._typeText(text, () => {
+                if (enableNotifications) {
+                    Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
+                }
+            });
+        } catch (error) {
+            const enableNotifications = this._settings.get_boolean('enable-notifications');
             if (enableNotifications) {
-              Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
+                Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
             }
-          });
-        } else if (enableNotifications) {
-          Main.notify(_('Voice Type Input'), _('No speech detected'));
+            console.error('Transcription error:', error);
+        } finally {
+            this._cleanupTempFile();
         }
-
-      } catch (error) {
-        const enableNotifications = this._settings.get_boolean('enable-notifications');
-        if (enableNotifications) {
-          Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
-        }
-        console.error('Transcription error:', error);
-      } finally {
-        // Clean up temporary file
-        this._cleanupTempFile();
-      }
     }
 
     _typeText(text, onComplete) {
