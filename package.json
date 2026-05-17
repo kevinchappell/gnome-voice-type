@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Voice Type Input GNOME Extension",
   "scripts": {
-    "install": "./dev.sh install",
+    "ext:install": "./dev.sh install",
     "reload": "./dev.sh reload",
     "enable": "./dev.sh enable",
     "disable": "./dev.sh disable",
@@ -14,7 +14,10 @@
     "logs": "./dev.sh logs",
     "uninstall": "./dev.sh uninstall",
     "dev": "./dev.sh watch",
-    "start": "./dev.sh install"
+    "start": "./dev.sh install",
+    "prepare": "lefthook install || true",
+    "commitlint": "commitlint --edit",
+    "release": "semantic-release"
   },
   "keywords": ["gnome", "extension", "voice", "input", "microphone"],
   "author": "Kevin Chappell",
@@ -22,5 +25,17 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/kevinchappell/gnome-voice-type-input"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.0",
+    "@semantic-release/release-notes-generator": "^14.0.0",
+    "lefthook": "^1.7.18",
+    "semantic-release": "^24.1.2"
   }
 }
