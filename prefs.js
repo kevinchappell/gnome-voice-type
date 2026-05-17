@@ -2,6 +2,7 @@ import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 import Secret from 'gi://Secret';
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import { PROVIDER_DEFAULTS } from './apiClient.js';
 
 export default class VoiceTypeInputPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
@@ -11,12 +12,6 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             icon_name: 'dialog-information-symbolic',
         });
         window.add(page);
-
-        const PROVIDER_PRESETS = {
-            openai: { baseUrl: 'https://api.openai.com/v1', model: 'whisper-1' },
-            openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/whisper-1' },
-            custom: { baseUrl: null, model: 'whisper-1' },
-        };
 
         // Create a preferences group for API settings
         const apiGroup = new Adw.PreferencesGroup({
@@ -64,7 +59,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             const selected = providerMap[providerRow.get_selected()];
             this.getSettings().set_string('api-provider', selected);
 
-            const preset = PROVIDER_PRESETS[selected];
+            const preset = PROVIDER_DEFAULTS[selected];
             if (preset.baseUrl) {
                 endpointRow.block_signal_handler(endpointChangedId);
                 endpointRow.set_text(preset.baseUrl);
@@ -81,6 +76,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
                 modelRow.set_text(this.getSettings().get_string('api-model'));
             } else {
                 modelRow.set_text(preset.model);
+                this.getSettings().set_string('api-model', preset.model);
             }
             modelRow.unblock_signal_handler(modelChangedId);
         });
