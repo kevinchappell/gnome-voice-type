@@ -1,7 +1,14 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Secret from 'gi://Secret';
 import Soup from 'gi://Soup';
+
+// Conditionally load Secret - if unavailable, auth will be skipped
+let _secret = null;
+try {
+    _secret = (await import('gi://Secret')).default;
+} catch (e) {
+    console.warn('Voice Type Input: libsecret not available, API key storage disabled');
+}
 
 /**
  * Build the full transcription URL from a base URL.
@@ -33,26 +40,21 @@ const PROVIDER_DEFAULTS = {
     },
 };
 
-const SECRET_SCHEMA = new Secret.Schema(
-    'org.gnome.shell.extensions.voice-type-input',
-    Secret.SchemaFlags.NONE,
-    { 'key-type': Secret.SchemaAttributeType.STRING }
-);
-
 export default class ApiClient {
-    constructor(baseUrl, model) {
+    constructor(baseUrl, model, provider) {
         if (!baseUrl) {
             throw new Error('baseUrl is required. Provide a customBaseUrl for custom provider.');
         }
         this.baseUrl = baseUrl;
         this.model = model || 'whisper-1';
+        this.provider = provider || 'custom';
     }
 
     static forProvider(provider, customBaseUrl, customModel) {
         const defaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.custom;
         const baseUrl = defaults.baseUrl || customBaseUrl;
         const model = customModel || defaults.model;
-        return new ApiClient(baseUrl, model);
+        return new ApiClient(baseUrl, model, provider);
     }
 
     /**
@@ -60,8 +62,14 @@ export default class ApiClient {
      * Returns null if no key is found or Secret Service is unavailable.
      */
     _getApiKey() {
+        if (!_secret) return null;
         try {
-            const key = Secret.password_lookup_sync(SECRET_SCHEMA, { 'key-type': 'api-key' }, null);
+            const schema = new _secret.Schema(
+                'org.gnome.shell.extensions.voice-type-input',
+                _secret.SchemaFlags.NONE,
+                { 'key-type': _secret.SchemaAttributeType.STRING, 'provider': _secret.SchemaAttributeType.STRING }
+            );
+            const key = _secret.password_lookup_sync(schema, { 'key-type': 'api-key', 'provider': this.provider }, null);
             return key || null;
         } catch (e) {
             console.warn('Voice Type Input: Secret Service unavailable, proceeding without auth:', e.message);

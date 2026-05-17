@@ -228,37 +228,37 @@ const Indicator = GObject.registerClass(
     }
 
     async _transcribeAudio() {
-        try {
-            const provider = this._settings.get_string('api-provider');
-            const baseUrl = this._settings.get_string('endpoint-url');
-            const model = this._settings.get_string('api-model');
+      try {
+        const provider = this._settings.get_string('api-provider');
+        const baseUrl = this._settings.get_string('endpoint-url');
+        const model = this._settings.get_string('api-model');
 
-            const client = ApiClient.forProvider(provider, baseUrl, model);
-            const text = await client.transcribe(this.tempFile);
+        const client = ApiClient.forProvider(provider, baseUrl, model);
+        const text = await client.transcribe(this.tempFile);
 
-            const enableNotifications = this._settings.get_boolean('enable-notifications');
+        const enableNotifications = this._settings.get_boolean('enable-notifications');
 
-            if (text === null) {
-                if (enableNotifications) {
-                    Main.notify(_('Voice Type Input'), _('No speech detected'));
-                }
-                return;
-            }
-
-            this._typeText(text, () => {
-                if (enableNotifications) {
-                    Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
-                }
-            });
-        } catch (error) {
-            const enableNotifications = this._settings.get_boolean('enable-notifications');
-            if (enableNotifications) {
-                Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
-            }
-            console.error('Transcription error:', error);
-        } finally {
-            this._cleanupTempFile();
+        if (text === null) {
+          if (enableNotifications) {
+            Main.notify(_('Voice Type Input'), _('No speech detected'));
+          }
+          return;
         }
+
+        this._typeText(text, () => {
+          if (enableNotifications) {
+            Main.notify(_('Voice Type Input'), _('Text typed successfully!'));
+          }
+        });
+      } catch (error) {
+        const enableNotifications = this._settings.get_boolean('enable-notifications');
+        if (enableNotifications) {
+          Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
+        }
+        console.error('Transcription error:', error);
+      } finally {
+        this._cleanupTempFile();
+      }
     }
 
     _typeText(text, onComplete) {

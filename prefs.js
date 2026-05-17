@@ -33,7 +33,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             text: this.getSettings().get_string('endpoint-url'),
             sensitive: currentProvider === 'custom',
         });
-        endpointRow.connect('changed', () => {
+        const endpointChangedId = endpointRow.connect('changed', () => {
             this.getSettings().set_string('endpoint-url', endpointRow.get_text());
         });
 
@@ -42,7 +42,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             title: _('Model'),
             text: this.getSettings().get_string('api-model'),
         });
-        modelRow.connect('changed', () => {
+        const modelChangedId = modelRow.connect('changed', () => {
             this.getSettings().set_string('api-model', modelRow.get_text());
         });
 
@@ -66,16 +66,23 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
             const preset = PROVIDER_PRESETS[selected];
             if (preset.baseUrl) {
-                this.getSettings().set_string('endpoint-url', preset.baseUrl);
+                endpointRow.block_signal_handler(endpointChangedId);
                 endpointRow.set_text(preset.baseUrl);
+                endpointRow.unblock_signal_handler(endpointChangedId);
                 endpointRow.set_sensitive(false);
             } else {
+                endpointRow.block_signal_handler(endpointChangedId);
+                endpointRow.set_text(this.getSettings().get_string('endpoint-url'));
+                endpointRow.unblock_signal_handler(endpointChangedId);
                 endpointRow.set_sensitive(true);
             }
-            if (preset.model) {
-                this.getSettings().set_string('api-model', preset.model);
+            modelRow.block_signal_handler(modelChangedId);
+            if (selected === 'custom') {
+                modelRow.set_text(this.getSettings().get_string('api-model'));
+            } else {
                 modelRow.set_text(preset.model);
             }
+            modelRow.unblock_signal_handler(modelChangedId);
         });
         apiGroup.add(providerRow);
 
@@ -90,23 +97,24 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         apiKeyRow.set_text(''); // Never show stored key
         apiKeyRow.connect('apply', () => {
             const key = apiKeyRow.get_text();
+            const provider = this.getSettings().get_string('api-provider');
             try {
                 const schema = new Secret.Schema(
                     'org.gnome.shell.extensions.voice-type-input',
                     Secret.SchemaFlags.NONE,
-                    { 'key-type': Secret.SchemaAttributeType.STRING }
+                    { 'key-type': Secret.SchemaAttributeType.STRING, 'provider': Secret.SchemaAttributeType.STRING }
                 );
                 if (key && key.length > 0) {
                     Secret.password_store_sync(
                         schema,
-                        { 'key-type': 'api-key' },
+                        { 'key-type': 'api-key', 'provider': provider },
                         Secret.COLLECTION_DEFAULT,
                         'Voice Type Input API Key',
                         key,
                         null
                     );
                 } else {
-                    Secret.password_clear_sync(schema, { 'key-type': 'api-key' }, null);
+                    Secret.password_clear_sync(schema, { 'key-type': 'api-key', 'provider': provider }, null);
                 }
                 apiKeyRow.set_text(''); // Clear after save
             } catch (e) {
