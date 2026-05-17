@@ -220,7 +220,7 @@ install_extension() {
     print_status "Installing/updating extension..."
 
     # Define required and optional files/directories to copy
-    local required_files=("metadata.json" "extension.js" "stylesheet.css")
+    local required_files=("metadata.json" "extension.js" "apiClient.js" "stylesheet.css")
     local optional_files=("prefs.js" "README.md" "CHANGELOG.md")
     local optional_dirs=("icons" "locale" "ui")
 
@@ -437,6 +437,7 @@ watch_changes() {
     # Build list of files to watch
     local watch_files=(
         "$SOURCE_DIR/extension.js"
+        "$SOURCE_DIR/apiClient.js"
         "$SOURCE_DIR/metadata.json"
         "$SOURCE_DIR/stylesheet.css"
     )

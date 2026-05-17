@@ -84,12 +84,27 @@ export default class ApiClient {
         const fullUrl = buildTranscriptionUrl(this.baseUrl);
         const apiKey = this._getApiKey();
 
-        const multipart = Soup.Multipart.new('multipart/form-data');
-        multipart.append_form_file('file', GLib.path_get_basename(tempFile), 'audio/wav', fileContent);
-        multipart.append_form_string('model', this.model);
-        multipart.append_form_string('response_format', 'json');
-
-        const message = Soup.Message.new_from_multipart(fullUrl, multipart);
+        let message;
+        if (this.provider === 'openrouter') {
+            // OpenRouter uses JSON with base64-encoded audio, not multipart.
+            const bytes = fileContent instanceof GLib.Bytes ? fileContent.get_data() : fileContent;
+            const base64 = GLib.base64_encode(bytes);
+            const body = JSON.stringify({
+                model: this.model,
+                input_audio: { data: base64, format: 'wav' },
+            });
+            message = Soup.Message.new('POST', fullUrl);
+            message.set_request_body_from_bytes(
+                'application/json',
+                new GLib.Bytes(new TextEncoder().encode(body))
+            );
+        } else {
+            const multipart = Soup.Multipart.new('multipart/form-data');
+            multipart.append_form_file('file', GLib.path_get_basename(tempFile), 'audio/wav', fileContent);
+            multipart.append_form_string('model', this.model);
+            multipart.append_form_string('response_format', 'json');
+            message = Soup.Message.new_from_multipart(fullUrl, multipart);
+        }
         message.request_headers.append('accept', 'application/json');
         if (apiKey) {
             message.request_headers.append('Authorization', `Bearer ${apiKey}`);

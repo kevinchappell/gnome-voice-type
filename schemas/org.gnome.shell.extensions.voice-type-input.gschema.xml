@@ -2,12 +2,12 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.voice-type-input" path="/org/gnome/shell/extensions/voice-type-input/">
     <key name="endpoint-url" type="s">
-      <default>'http://localhost:8675/v1'</default>
+      <default>'https://api.openai.com/v1'</default>
       <summary>API endpoint URL</summary>
       <description>Base URL of an OpenAI-compatible speech-to-text API, including the API version (e.g. https://api.openai.com/v1). The extension appends /audio/transcriptions automatically.</description>
     </key>
     <key name="api-provider" type="s">
-      <default>'custom'</default>
+      <default>'openai'</default>
       <summary>API provider</summary>
       <description>API provider preset: openai, openrouter, or custom</description>
     </key>
