@@ -61,14 +61,21 @@ gnome-extensions prefs voice-type-input@kevinchappell.github.io
 
 ### Running a local Whisper server
 
-Any OpenAI-compatible Whisper server will work. For example:
+Recommended: [`whisper.cpp`](https://github.com/ggerganov/whisper.cpp) — a single static binary with no Python dependencies. The `whisper-server` it builds exposes an OpenAI-compatible API that this extension talks to directly.
 
 ```bash
-pip install faster-whisper-server
-faster-whisper-server --port 8675
+git clone https://github.com/ggerganov/whisper.cpp
+cd whisper.cpp
+make                                          # builds whisper-cli and whisper-server
+sh ./models/download-ggml-model.sh base.en    # ~140 MB, runs faster than real-time on CPU
+./build/bin/whisper-server -m models/ggml-base.en.bin
 ```
 
-Then set the provider to *Custom* and the Base URL to `http://localhost:8675`.
+Then set the provider to *Custom* and the Base URL to `http://localhost:8080/v1`.
+
+Larger models (`small.en`, `medium.en`) trade speed for accuracy; swap the model file in both the download and run commands.
+
+Alternative: [`faster-whisper-server`](https://github.com/fedirz/faster-whisper-server) is CTranslate2-based and faster on GPU, but requires a Python environment.
 
 ## How text insertion works
 
