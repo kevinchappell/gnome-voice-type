@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-GNOME Shell 46+ extension (ES6 modules, GJS). The repo lives directly under `~/.local/share/gnome-shell/extensions/voice-type-input@kevinchappell.github.io/` — edits affect the installed extension.
+GNOME Shell 46+ extension (ES6 modules, GJS).
 
 See `AGENTS.md` for a longer tour of the codebase. README.md covers user-facing setup.
 

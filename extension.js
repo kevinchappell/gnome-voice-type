@@ -57,6 +57,15 @@ const Indicator = GObject.registerClass(
       const clickConnection = this.connect('button-press-event', this._onClicked.bind(this));
       this._signalConnections.push({ object: this, id: clickConnection });
 
+      // React to debug-mode toggling at runtime so the overlay closes immediately when disabled
+      const debugModeConnection = this._settings.connect('changed::debug-mode', () => {
+        this._debugMode = this._settings.get_boolean('debug-mode');
+        if (!this._debugMode) {
+          this._destroyDebugWindow();
+        }
+      });
+      this._signalConnections.push({ object: this._settings, id: debugModeConnection });
+
       // Disable the popup menu to avoid confusion with click toggle
       this.menu.actor.hide();
       this.menu.actor.reactive = false;
@@ -518,8 +527,12 @@ const Indicator = GObject.registerClass(
           } else if (code < 0x20 || code === 0x7f) {
             // Skip other control characters.
             continue;
+          } else if (code <= 0xff) {
+            // Latin-1 keysyms equal their codepoint; Mutter can map these to
+            // a keycode via the current XKB layout.
+            keyval = code;
           } else {
-            // X11 Unicode keysym convention: 0x01000000 | codepoint.
+            // X11 Unicode keysym convention for everything above Latin-1.
             keyval = 0x01000000 | code;
           }
           virtualDevice.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED);
