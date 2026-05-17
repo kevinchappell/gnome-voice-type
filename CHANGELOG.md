@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.1...v1.0.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* openrouter requests ([509a85c](https://github.com/kevinchappell/gnome-voice-type/commit/509a85c3c3195af8d6d7051901f706d0f2a4cbb2))
+
 ## [1.0.1](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.0...v1.0.1) (2026-05-17)
 
 
