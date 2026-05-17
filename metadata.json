@@ -2,7 +2,7 @@
   "uuid": "voice-type-input@kevinchappell.github.io",
   "name": "Voice Type Input",
   "description": "Voice typing input extension with real-time streaming transcription and traditional file-based processing modes",
-  "version": 4,
+  "version": 5,
   "shell-version": [
     "45",
     "46",

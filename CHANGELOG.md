@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.0...v1.0.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* saving api key clears it ([76c6725](https://github.com/kevinchappell/gnome-voice-type/commit/76c67258713f9c6337e3e7c077682b5db77a8c52))
+
 # 1.0.0 (2026-05-17)
 
 
