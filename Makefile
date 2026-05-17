@@ -39,7 +39,7 @@ schemas:
 
 pack: schemas
 	@rm -f $(UUID).zip
-	@zip -r $(UUID).zip extension.js prefs.js metadata.json stylesheet.css schemas/ LICENSE
+	@zip -r $(UUID).zip extension.js prefs.js apiClient.js metadata.json stylesheet.css schemas/ LICENSE README.md
 
 # Cleanup targets
 uninstall:

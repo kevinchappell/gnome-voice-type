@@ -931,11 +931,13 @@ const Indicator = GObject.registerClass(
 
 export default class VoiceTypeInputExtension extends Extension {
   enable() {
+    this._settings = this.getSettings();
+    this._migrateEndpointUrl();
+
     this._indicator = new Indicator(this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
 
     // Register keyboard shortcut for toggling recording
-    this._settings = this.getSettings();
     Main.wm.addKeybinding(
       'toggle-recording-shortcut',
       this._settings,
@@ -945,6 +947,18 @@ export default class VoiceTypeInputExtension extends Extension {
         this._indicator._toggleRecording();
       }
     );
+  }
+
+  // One-shot migration: earlier versions stored endpoint-url without the
+  // API version (e.g. "http://localhost:8675"). The current contract is
+  // that the base URL must include "/v1", so any path component is fine
+  // as long as it ends in "/v1". Append it if it's missing.
+  _migrateEndpointUrl() {
+    const current = this._settings.get_string('endpoint-url');
+    if (!current) return;
+    const normalized = current.replace(/\/+$/, '');
+    if (/\/v1$/.test(normalized)) return;
+    this._settings.set_string('endpoint-url', `${normalized}/v1`);
   }
 
   disable() {
