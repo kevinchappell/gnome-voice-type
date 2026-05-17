@@ -10,19 +10,11 @@ try {
     console.warn('Voice Type Input: libsecret not available, API key storage disabled');
 }
 
-/**
- * Build the full transcription URL from a base URL.
- * Handles trailing slashes and optional /v1 suffix.
- *
- * Note: This is prescriptive by design. The extension targets
- * OpenAI-compatible endpoints which use /v1/audio/transcriptions.
- */
+// Base URL is expected to already include the API version (e.g. ".../v1"),
+// matching what OpenAI and OpenRouter publish in their docs. The extension
+// only appends the resource path.
 function buildTranscriptionUrl(baseUrl) {
-    const normalized = baseUrl.replace(/\/+$/, '');
-    if (normalized.endsWith('/v1')) {
-        return `${normalized}/audio/transcriptions`;
-    }
-    return `${normalized}/v1/audio/transcriptions`;
+    return `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
 }
 
 export const PROVIDER_DEFAULTS = {

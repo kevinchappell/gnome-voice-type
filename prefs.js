@@ -350,7 +350,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
         const endpointInfoRow = new Adw.ActionRow({
             title: _('Endpoint Format'),
-            subtitle: _('For OpenAI and OpenRouter, the base URL is set automatically. For Custom, enter your base URL (e.g., http://localhost:8675). The extension appends the transcription path automatically.'),
+            subtitle: _('For OpenAI and OpenRouter, the base URL is set automatically. For Custom, enter your base URL including the API version (e.g., http://localhost:8675/v1). The extension appends /audio/transcriptions automatically.'),
         });
         infoGroup.add(endpointInfoRow);
 
