@@ -1,5 +1,6 @@
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
+import Secret from 'gi://Secret';
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 export default class VoiceTypeInputPreferences extends ExtensionPreferences {
@@ -11,6 +12,12 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         window.add(page);
 
+        const PROVIDER_PRESETS = {
+            openai: { baseUrl: 'https://api.openai.com/v1', model: 'whisper-1' },
+            openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/whisper-1' },
+            custom: { baseUrl: null, model: 'whisper-1' },
+        };
+
         // Create a preferences group for API settings
         const apiGroup = new Adw.PreferencesGroup({
             title: _('API Settings'),
@@ -18,15 +25,97 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         page.add(apiGroup);
 
+        const currentProvider = this.getSettings().get_string('api-provider');
+
         // Endpoint URL setting
         const endpointRow = new Adw.EntryRow({
-            title: _('Endpoint URL'),
+            title: _('Base URL'),
             text: this.getSettings().get_string('endpoint-url'),
+            sensitive: currentProvider === 'custom',
         });
         endpointRow.connect('changed', () => {
             this.getSettings().set_string('endpoint-url', endpointRow.get_text());
         });
+
+        // Model setting
+        const modelRow = new Adw.EntryRow({
+            title: _('Model'),
+            text: this.getSettings().get_string('api-model'),
+        });
+        modelRow.connect('changed', () => {
+            this.getSettings().set_string('api-model', modelRow.get_text());
+        });
+
+        // Provider preset
+        const providerRow = new Adw.ComboRow({
+            title: _('Provider'),
+            subtitle: _('Select a preset or use custom settings'),
+        });
+        const providerModel = new Gtk.StringList();
+        providerModel.append(_('OpenAI'));
+        providerModel.append(_('OpenRouter'));
+        providerModel.append(_('Custom'));
+        providerRow.set_model(providerModel);
+
+        const providerMap = ['openai', 'openrouter', 'custom'];
+        providerRow.set_selected(providerMap.indexOf(currentProvider) !== -1 ? providerMap.indexOf(currentProvider) : 2);
+
+        providerRow.connect('notify::selected', () => {
+            const selected = providerMap[providerRow.get_selected()];
+            this.getSettings().set_string('api-provider', selected);
+
+            const preset = PROVIDER_PRESETS[selected];
+            if (preset.baseUrl) {
+                this.getSettings().set_string('endpoint-url', preset.baseUrl);
+                endpointRow.set_text(preset.baseUrl);
+                endpointRow.set_sensitive(false);
+            } else {
+                endpointRow.set_sensitive(true);
+            }
+            if (preset.model) {
+                this.getSettings().set_string('api-model', preset.model);
+                modelRow.set_text(preset.model);
+            }
+        });
+        apiGroup.add(providerRow);
+
         apiGroup.add(endpointRow);
+
+        // API Key setting (stored in Secret Service)
+        const apiKeyRow = new Adw.PasswordEntryRow({
+            title: _('API Key'),
+            text: '',
+            show_apply_button: true,
+        });
+        apiKeyRow.set_text(''); // Never show stored key
+        apiKeyRow.connect('apply', () => {
+            const key = apiKeyRow.get_text();
+            try {
+                const schema = new Secret.Schema(
+                    'org.gnome.shell.extensions.voice-type-input',
+                    Secret.SchemaFlags.NONE,
+                    { 'key-type': Secret.SchemaAttributeType.STRING }
+                );
+                if (key && key.length > 0) {
+                    Secret.password_store_sync(
+                        schema,
+                        { 'key-type': 'api-key' },
+                        Secret.COLLECTION_DEFAULT,
+                        'Voice Type Input API Key',
+                        key,
+                        null
+                    );
+                } else {
+                    Secret.password_clear_sync(schema, { 'key-type': 'api-key' }, null);
+                }
+                apiKeyRow.set_text(''); // Clear after save
+            } catch (e) {
+                console.error('Failed to store API key:', e.message);
+            }
+        });
+        apiGroup.add(apiKeyRow);
+
+        apiGroup.add(modelRow);
 
         // Create a preferences group for recording settings
         const recordingGroup = new Adw.PreferencesGroup({
@@ -257,7 +346,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
         const endpointInfoRow = new Adw.ActionRow({
             title: _('Endpoint Format'),
-            subtitle: _('Enter the base URL (e.g., http://localhost:8675). The extension will automatically append "/v1/audio/transcriptions" to this URL.'),
+            subtitle: _('For OpenAI and OpenRouter, the base URL is set automatically. For Custom, enter your base URL (e.g., http://localhost:8675). The extension appends the transcription path automatically.'),
         });
         infoGroup.add(endpointInfoRow);
 
