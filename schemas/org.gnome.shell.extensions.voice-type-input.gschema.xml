@@ -4,7 +4,7 @@
     <key name="endpoint-url" type="s">
       <default>'http://localhost:8675'</default>
       <summary>API endpoint URL</summary>
-      <description>The URL of the speech-to-text API endpoint (without the /transcribe path)</description>
+      <description>The base URL of the speech-to-text API endpoint. The extension appends /v1/audio/transcriptions automatically.</description>
     </key>
     <key name="api-provider" type="s">
       <default>'custom'</default>

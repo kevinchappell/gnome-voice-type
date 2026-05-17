@@ -25,7 +25,7 @@ function buildTranscriptionUrl(baseUrl) {
     return `${normalized}/v1/audio/transcriptions`;
 }
 
-const PROVIDER_DEFAULTS = {
+export const PROVIDER_DEFAULTS = {
     openai: {
         baseUrl: 'https://api.openai.com/v1',
         model: 'whisper-1',
@@ -104,7 +104,7 @@ export default class ApiClient {
         }
 
         const session = Soup.Session.new();
-        session.set_timeout(30);
+        session.set_timeout(120);
 
         let json;
         try {
