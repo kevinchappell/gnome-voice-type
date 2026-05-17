@@ -112,7 +112,6 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
                 } else {
                     Secret.password_clear_sync(schema, { 'key-type': 'api-key', 'provider': provider }, null);
                 }
-                apiKeyRow.set_text(''); // Clear after save
             } catch (e) {
                 console.error('Failed to store API key:', e.message);
             }
