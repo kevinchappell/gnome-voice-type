@@ -1,7 +1,7 @@
 {
   "uuid": "voice-type-input@kevinchappell.github.io",
   "name": "Voice Type Input",
-  "description": "Voice typing input extension with real-time streaming transcription and traditional file-based processing modes",
+  "description": "Voice typing extension that records microphone audio, uploads it to a configured speech-to-text API, and inserts the transcription. Uses the clipboard as a paste fallback.",
   "version": 6,
   "shell-version": [
     "45",

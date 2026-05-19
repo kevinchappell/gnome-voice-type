@@ -6,7 +6,7 @@ Requires GNOME Shell 46+ (Wayland or X11).
 
 ## Privacy & network use
 
-This extension **uploads recorded audio to a speech-to-text endpoint that you configure**. Nothing is sent anywhere by default — the default endpoint is `http://localhost:8675`, intended for a local Whisper server. If you point it at OpenAI, OpenRouter, or another remote provider, your audio is sent to that provider under their terms.
+This extension **uploads recorded audio to a speech-to-text endpoint that you configure** when you start a recording. The default provider is OpenAI, but requests require an API key; you can also choose a local or remote OpenAI-compatible endpoint. If you point it at OpenAI, OpenRouter, or another remote provider, your audio is sent to that provider under their terms.
 
 The extension also reads and writes the system clipboard when using the clipboard-paste fallback path (see below). Your existing clipboard content is restored after pasting, unless you enable "Keep transcription on clipboard".
 

@@ -6,8 +6,8 @@ import Soup from 'gi://Soup';
 let _secret = null;
 try {
     _secret = (await import('gi://Secret')).default;
-} catch (e) {
-    console.warn('Voice Type Input: libsecret not available, API key storage disabled');
+} catch (_e) {
+    _secret = null;
 }
 
 // Base URL is expected to already include the API version (e.g. ".../v1"),
@@ -63,10 +63,28 @@ export default class ApiClient {
             );
             const key = _secret.password_lookup_sync(schema, { 'key-type': 'api-key', 'provider': this.provider }, null);
             return key || null;
-        } catch (e) {
-            console.warn('Voice Type Input: Secret Service unavailable, proceeding without auth:', e.message);
+        } catch (_e) {
             return null;
         }
+    }
+
+    _loadAudioFile(tempFile) {
+        const file = Gio.File.new_for_path(tempFile);
+
+        return new Promise((resolve, reject) => {
+            file.load_contents_async(null, (source, result) => {
+                try {
+                    const [success, contents] = source.load_contents_finish(result);
+                    if (!success) {
+                        reject(new Error('Failed to load audio file'));
+                        return;
+                    }
+                    resolve(contents);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
     }
 
     /**
@@ -75,11 +93,7 @@ export default class ApiClient {
      * @returns {Promise<string|null>} - The transcribed text, or null if no speech detected
      */
     async transcribe(tempFile) {
-        const file = Gio.File.new_for_path(tempFile);
-        const [success, fileContent] = file.load_contents(null);
-        if (!success) {
-            throw new Error('Failed to load audio file');
-        }
+        const fileContent = await this._loadAudioFile(tempFile);
 
         const fullUrl = buildTranscriptionUrl(this.baseUrl);
         const apiKey = this._getApiKey();
@@ -125,8 +139,7 @@ export default class ApiClient {
                         if (statusCode >= 200 && statusCode < 300) {
                             try {
                                 resolve(JSON.parse(bodyText));
-                            } catch (e) {
-                                console.debug('JSON parse failed:', e.message);
+                            } catch (_e) {
                                 reject(new Error('Invalid JSON response'));
                             }
                         } else {

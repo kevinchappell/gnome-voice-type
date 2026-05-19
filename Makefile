@@ -37,9 +37,9 @@ logs:
 schemas:
 	glib-compile-schemas schemas/
 
-pack: schemas
+pack:
 	@rm -f $(UUID).zip
-	@zip -r $(UUID).zip extension.js prefs.js apiClient.js metadata.json stylesheet.css schemas/ LICENSE README.md
+	@zip -r $(UUID).zip extension.js prefs.js apiClient.js metadata.json stylesheet.css schemas/org.gnome.shell.extensions.voice-type-input.gschema.xml LICENSE README.md
 
 # Cleanup targets
 uninstall:

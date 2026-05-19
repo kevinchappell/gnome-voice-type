@@ -76,6 +76,18 @@ const Indicator = GObject.registerClass(
       return Clutter.EVENT_PROPAGATE;
     }
 
+    _logDebug(...args) {
+      if (this._debugMode) {
+        console.debug(...args);
+      }
+    }
+
+    _logError(...args) {
+      if (this._debugMode) {
+        console.error(...args);
+      }
+    }
+
     async _toggleRecording() {
       // Prevent recursive toggle calls
       if (this._togglingRecording) {
@@ -90,7 +102,7 @@ const Indicator = GObject.registerClass(
           await this._startRecording();
         }
       } catch (error) {
-        console.error('Error in _toggleRecording:', error);
+        this._logError('Error in _toggleRecording:', error);
       } finally {
         this._togglingRecording = false;
       }
@@ -98,7 +110,7 @@ const Indicator = GObject.registerClass(
 
     async _startRecording() {
       try {
-        console.debug('_startRecording called');
+        this._logDebug('_startRecording called');
         this.isRecording = true;
         this.setMicrophoneRecording(true);
 
@@ -113,11 +125,11 @@ const Indicator = GObject.registerClass(
         this._pauseMediaPlayers();
 
         // Force file-based recording only - streaming disabled
-        console.debug('Starting file-based recording (streaming disabled)...');
+        this._logDebug('Starting file-based recording (streaming disabled)...');
         await this._startFileRecording();
 
       } catch (error) {
-        console.error('Error in _startRecording:', error);
+        this._logError('Error in _startRecording:', error);
         this.isRecording = false;
         this.setMicrophoneRecording(false);
 
@@ -131,7 +143,7 @@ const Indicator = GObject.registerClass(
         if (enableNotifications) {
           Main.notify(_('Voice Type Input'), _('Failed to start recording: ') + error.message);
         }
-        console.error('Error starting recording:', error);
+        this._logError('Error starting recording:', error);
       }
     }
 
@@ -230,7 +242,7 @@ const Indicator = GObject.registerClass(
         if (enableNotifications) {
           Main.notify(_('Voice Type Input'), _('Error stopping recording: ') + error.message);
         }
-        console.error('Error stopping recording:', error);
+        this._logError('Error stopping recording:', error);
       } finally {
         this._stoppingRecording = false;
       }
@@ -264,7 +276,7 @@ const Indicator = GObject.registerClass(
         if (enableNotifications) {
           Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
         }
-        console.error('Transcription error:', error);
+        this._logError('Transcription error:', error);
       } finally {
         this._cleanupTempFile();
       }
@@ -272,10 +284,10 @@ const Indicator = GObject.registerClass(
 
     _typeText(text, onComplete) {
       try {
-        console.debug(`_typeText called with text length: ${text.length}, debug mode: ${this._debugMode}`);
+        this._logDebug(`_typeText called with text length: ${text.length}, debug mode: ${this._debugMode}`);
 
         if (this._debugMode) {
-          console.debug('Using debug mode typing');
+          this._logDebug('Using debug mode typing');
           this._appendDebugLine(`[text] ${text}`);
           this._simulateDebugTyping(text);
           if (onComplete) onComplete();
@@ -284,34 +296,34 @@ const Indicator = GObject.registerClass(
 
         const autoInsert = this._settings.get_boolean('auto-insert');
         if (!autoInsert) {
-          console.debug('Auto-insert disabled, copying to clipboard only');
+          this._logDebug('Auto-insert disabled, copying to clipboard only');
           this._fallbackToClipboard(text);
           return;
         }
 
         // Prefer Clutter virtual-keyboard typing: it runs inside gnome-shell,
         // so it works on GNOME Wayland without ydotool/wtype.
-        console.debug('Trying Clutter virtual-keyboard typing...');
+        this._logDebug('Trying Clutter virtual-keyboard typing...');
         if (this._tryTypeWithClutter(text)) {
-          console.debug('Clutter typing succeeded');
+          this._logDebug('Clutter typing succeeded');
           this._lastTypeMethod = 'clutter:type';
           if (onComplete) onComplete();
           return;
         }
 
-        console.debug('Clutter typing unavailable, trying ydotool...');
+        this._logDebug('Clutter typing unavailable, trying ydotool...');
         this._tryTypeWithYdotool(text, (success) => {
           if (success) {
-            console.debug('ydotool typing succeeded');
+            this._logDebug('ydotool typing succeeded');
             this._lastTypeMethod = 'ydotool';
             if (onComplete) onComplete();
             return;
           }
-          console.debug('ydotool typing failed, falling back to clipboard + paste');
+          this._logDebug('ydotool typing failed, falling back to clipboard + paste');
           this._pasteViaClipboard(text, onComplete);
         });
       } catch (error) {
-        console.error('Error typing text:', error);
+        this._logError('Error typing text:', error);
         this._fallbackToClipboard(text);
         if (onComplete) onComplete();
       }
@@ -374,11 +386,11 @@ const Indicator = GObject.registerClass(
                   try {
                     clipboard.set_text(type, saved);
                   } catch (e) {
-                    console.debug('Clipboard restore failed:', e.message);
+                    this._logDebug('Clipboard restore failed:', e.message);
                   }
                 });
               } catch (e) {
-                console.debug('Clipboard restore check failed:', e.message);
+                this._logDebug('Clipboard restore check failed:', e.message);
               }
             };
             maybeRestore(St.ClipboardType.CLIPBOARD, savedClip);
@@ -390,7 +402,7 @@ const Indicator = GObject.registerClass(
 
         this._smartPaste(text, afterPaste);
       }).catch((e) => {
-        console.error('Clipboard paste path failed:', e);
+        this._logError('Clipboard paste path failed:', e);
         this._fallbackToClipboard(text);
         finish();
       });
@@ -398,14 +410,14 @@ const Indicator = GObject.registerClass(
 
     _smartPaste(text, onComplete) {
       const enhancedTerminalSupport = this._settings.get_boolean('enhanced-terminal-support');
-      console.debug(`_smartPaste called, enhanced terminal support: ${enhancedTerminalSupport}`);
+      this._logDebug(`_smartPaste called, enhanced terminal support: ${enhancedTerminalSupport}`);
 
       if (enhancedTerminalSupport) {
         const display = global.display;
         const focusWindow = display.get_focus_window();
 
         if (focusWindow && this._isTerminalApplication(focusWindow.get_wm_class(), focusWindow.get_title())) {
-          console.debug('Detected terminal application, trying Ctrl+Shift+V');
+          this._logDebug('Detected terminal application, trying Ctrl+Shift+V');
           if (this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_Shift_L, Clutter.KEY_v])) {
             this._lastTypeMethod = 'clutter:ctrl-shift-v';
             if (onComplete) onComplete(true);
@@ -418,12 +430,12 @@ const Indicator = GObject.registerClass(
               if (onComplete) onComplete(true);
               return;
             }
-            console.debug('Terminal paste failed, trying standard paste');
+            this._logDebug('Terminal paste failed, trying standard paste');
             this._tryStandardPaste(text, onComplete);
           });
           return;
         } else {
-          console.debug('Not a terminal application or no focus window');
+          this._logDebug('Not a terminal application or no focus window');
         }
       }
 
@@ -431,7 +443,7 @@ const Indicator = GObject.registerClass(
     }
 
     _tryStandardPaste(text, onComplete) {
-      console.debug('Trying standard Ctrl+V paste');
+      this._logDebug('Trying standard Ctrl+V paste');
       // Try Clutter first (works natively in GNOME Shell on both X11 and Wayland)
       if (this._simulateKeyCombo([Clutter.KEY_Control_L, Clutter.KEY_v])) {
         this._lastTypeMethod = 'clutter:ctrl-v';
@@ -445,7 +457,7 @@ const Indicator = GObject.registerClass(
           if (onComplete) onComplete(true);
           return;
         }
-        console.debug('All paste methods failed');
+        this._logDebug('All paste methods failed');
         if (onComplete) onComplete(false);
       });
     }
@@ -466,7 +478,7 @@ const Indicator = GObject.registerClass(
         }
         return true;
       } catch (e) {
-        console.debug('Clutter key simulation failed:', e.message);
+        this._logDebug('Clutter key simulation failed:', e.message);
         return false;
       }
     }
@@ -484,12 +496,12 @@ const Indicator = GObject.registerClass(
             const success = _proc.wait_check_finish(result);
             callback(success);
           } catch (error) {
-            console.debug(`Subprocess failed for ${commands[0]}:`, error.message);
+            this._logDebug(`Subprocess failed for ${commands[0]}:`, error.message);
             callback(false);
           }
         });
       } catch (error) {
-        console.debug(`Subprocess launch failed for ${commands[0]}:`, error.message);
+        this._logDebug(`Subprocess launch failed for ${commands[0]}:`, error.message);
         callback(false);
       }
     }
@@ -499,7 +511,7 @@ const Indicator = GObject.registerClass(
       try {
         return GLib.find_program_in_path(name) !== null;
       } catch (e) {
-        console.debug('Program lookup failed:', e.message);
+        this._logDebug('Program lookup failed:', e.message);
         return false;
       }
     }
@@ -540,7 +552,7 @@ const Indicator = GObject.registerClass(
         }
         return true;
       } catch (e) {
-        console.debug('Clutter typing failed:', e.message);
+        this._logDebug('Clutter typing failed:', e.message);
         return false;
       }
     }
@@ -567,7 +579,7 @@ const Indicator = GObject.registerClass(
         const args = ['ydotool', 'type', '-p', '1', '-d', String(delay), '--', sanitized];
         this._tryAsyncSubprocess(args, callback);
       } catch (e) {
-        console.debug('ydotool typing failed:', e.message);
+        this._logDebug('ydotool typing failed:', e.message);
         callback(false);
       }
     }
@@ -631,7 +643,7 @@ const Indicator = GObject.registerClass(
           Main.notify(_('Voice Type Input'), _('Text copied to clipboard - paste with Ctrl+V or middle-click'));
         }
       } catch (error) {
-        console.error('Clipboard fallback failed:', error);
+        this._logError('Clipboard fallback failed:', error);
         const enableNotifications = this._settings.get_boolean('enable-notifications');
         if (enableNotifications) {
           Main.notify(_('Voice Type Input'), `Text: "${text}" (manual copy needed)`);
@@ -647,7 +659,7 @@ const Indicator = GObject.registerClass(
             file.delete(null);
           }
         } catch (error) {
-          console.debug('Error cleaning up temp file:', error);
+          this._logDebug('Error cleaning up temp file:', error);
         }
         this.tempFile = null;
       }
@@ -657,12 +669,12 @@ const Indicator = GObject.registerClass(
     _pauseMediaPlayers() {
       const pauseMediaEnabled = this._settings.get_boolean('mute-media-during-recording');
       if (!pauseMediaEnabled) {
-        console.debug('Media pause during recording disabled in settings');
+        this._logDebug('Media pause during recording disabled in settings');
         return;
       }
 
       try {
-        console.debug('Voice Type Input: checking MPRIS media players to pause');
+        this._logDebug('Voice Type Input: checking MPRIS media players to pause');
 
         const bus = Gio.bus_get_sync(Gio.BusType.SESSION, null);
 
@@ -707,11 +719,11 @@ const Indicator = GObject.registerClass(
             const innerVariant = statusResult.get_child_value(0).get_variant();
             playbackStatus = innerVariant.get_string()[0];
           } catch (e) {
-            console.debug(`Voice Type Input: failed to query PlaybackStatus for ${name}: ${e.message}`);
+            this._logDebug(`Voice Type Input: failed to query PlaybackStatus for ${name}: ${e.message}`);
             continue;
           }
 
-          console.debug(`Voice Type Input: MPRIS player ${name} status=${playbackStatus}`);
+          this._logDebug(`Voice Type Input: MPRIS player ${name} status=${playbackStatus}`);
 
           if (playbackStatus !== 'Playing') continue;
 
@@ -728,20 +740,20 @@ const Indicator = GObject.registerClass(
               null
             );
             this._pausedPlayers.push(name);
-            console.debug(`Voice Type Input: paused ${name}`);
+            this._logDebug(`Voice Type Input: paused ${name}`);
           } catch (e) {
-            console.debug(`Voice Type Input: failed to pause ${name}: ${e.message}`);
+            this._logDebug(`Voice Type Input: failed to pause ${name}: ${e.message}`);
           }
         }
 
         if (this._pausedPlayers.length > 0) {
           this._mediaPaused = true;
         } else {
-          console.debug('Voice Type Input: no playing MPRIS media players found');
+          this._logDebug('Voice Type Input: no playing MPRIS media players found');
         }
 
       } catch (error) {
-        console.error('Voice Type Input: error pausing media players:', error);
+        this._logError('Voice Type Input: error pausing media players:', error);
       }
     }
 
@@ -767,9 +779,9 @@ const Indicator = GObject.registerClass(
               -1,
               null
             );
-            console.debug(`Voice Type Input: resumed ${playerName}`);
+            this._logDebug(`Voice Type Input: resumed ${playerName}`);
           } catch (e) {
-            console.debug(`Voice Type Input: failed to resume ${playerName}: ${e.message}`);
+            this._logDebug(`Voice Type Input: failed to resume ${playerName}: ${e.message}`);
           }
         }
 
@@ -777,7 +789,7 @@ const Indicator = GObject.registerClass(
         this._mediaPaused = false;
 
       } catch (error) {
-        console.error('Voice Type Input: error resuming media players:', error);
+        this._logError('Voice Type Input: error resuming media players:', error);
       }
     }
 
@@ -835,7 +847,7 @@ const Indicator = GObject.registerClass(
               }
             }
           } catch (e) {
-            console.debug('Signal disconnect failed:', e.message);
+            this._logDebug('Signal disconnect failed:', e.message);
           }
         });
         this._signalConnections = [];
@@ -847,7 +859,7 @@ const Indicator = GObject.registerClass(
           this.icon.destroy();
         }
       } catch (e) {
-        console.debug('Icon cleanup failed:', e.message);
+        this._logDebug('Icon cleanup failed:', e.message);
       }
       this.icon = null;
 
@@ -855,23 +867,23 @@ const Indicator = GObject.registerClass(
       try {
         super.destroy();
       } catch (e) {
-        console.debug('Parent destroy failed:', e.message);
+        this._logDebug('Parent destroy failed:', e.message);
       }
     }
 
     _ensureDebugWindow() {
       if (this._debugWindow) return;
 
-      console.debug('Creating debug window...');
+      this._logDebug('Creating debug window...');
       const monitor = Main.layoutManager.primaryMonitor;
-      console.debug(`Monitor: x=${monitor.x}, y=${monitor.y}, width=${monitor.width}, height=${monitor.height}`);
+      this._logDebug(`Monitor: x=${monitor.x}, y=${monitor.y}, width=${monitor.width}, height=${monitor.height}`);
 
       const windowX = Math.floor(monitor.x + monitor.width * 0.05);
       const windowY = Math.floor(monitor.y + monitor.height * 0.1);
       const windowWidth = Math.floor(monitor.width * 0.4);
       const windowHeight = Math.floor(monitor.height * 0.25);
 
-      console.debug(`Debug window position: x=${windowX}, y=${windowY}, width=${windowWidth}, height=${windowHeight}`);
+      this._logDebug(`Debug window position: x=${windowX}, y=${windowY}, width=${windowWidth}, height=${windowHeight}`);
 
       this._debugWindow = new St.BoxLayout({
         style_class: 'voice-type-input-debug-window',
@@ -893,7 +905,7 @@ const Indicator = GObject.registerClass(
 
       // Ensure the window is visible
       this._debugWindow.show();
-      console.debug('Debug window created and added to UI group');
+      this._logDebug('Debug window created and added to UI group');
     }
 
     _destroyDebugWindow() {
@@ -902,7 +914,7 @@ const Indicator = GObject.registerClass(
         this._debugTypeSource = 0;
       }
       if (this._debugWindow) {
-        try { this._debugWindow.destroy(); } catch (e) { console.debug('Debug window destroy error:', e.message); }
+        try { this._debugWindow.destroy(); } catch (e) { this._logDebug('Debug window destroy error:', e.message); }
       }
       this._debugWindow = null;
       this._debugLabel = null;
@@ -910,17 +922,17 @@ const Indicator = GObject.registerClass(
 
     _appendDebugLine(line) {
       if (!this._debugLabel) {
-        console.debug('Debug label not found, ensuring debug window...');
+        this._logDebug('Debug label not found, ensuring debug window...');
         this._ensureDebugWindow();
       }
       if (!this._debugLabel) {
-        console.error('Failed to create debug label');
+        this._logError('Failed to create debug label');
         return;
       }
       const existing = this._debugLabel.text || '';
       const newText = existing + (existing ? '\n' : '') + line;
       this._debugLabel.text = newText;
-      console.debug(`Debug line appended: "${line}", total text length: ${newText.length}`);
+      this._logDebug(`Debug line appended: "${line}", total text length: ${newText.length}`);
     }
 
     _simulateDebugTyping(text) {
@@ -988,7 +1000,7 @@ export default class VoiceTypeInputExtension extends Extension {
       try {
         this._indicator.destroy();
       } catch (e) {
-        console.debug('Indicator destroy failed during disable:', e.message);
+        this._indicator._logDebug('Indicator destroy failed during disable:', e.message);
       }
 
       this._indicator = null;
