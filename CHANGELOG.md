@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.2...v1.0.3) (2026-05-19)
+
+
+### Bug Fixes
+
+* gnome extension submission issues ([45477a9](https://github.com/kevinchappell/gnome-voice-type/commit/45477a9af0b36f2e223d3878806fa422568bdc64))
+
 ## [1.0.2](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.1...v1.0.2) (2026-05-17)
 
 
