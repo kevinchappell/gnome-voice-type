@@ -72,6 +72,14 @@ else
     echo -e "${YELLOW}⚠${NC} Node.js not available - skipping JS syntax check"
 fi
 
+# Check for risky GStreamer pipeline string parsing in source
+if grep -q "Gst\.parse_launch" "$SOURCE_DIR/extension.js"; then
+    echo -e "${RED}✗${NC} extension.js uses Gst.parse_launch; build pipelines with explicit elements instead"
+    exit 1
+else
+    echo -e "${GREEN}✓${NC} GStreamer pipeline is built without Gst.parse_launch"
+fi
+
 # Check if GNOME Shell recognizes the extension
 if gnome-extensions list | grep -q "$EXTENSION_UUID"; then
     status=$(gnome-extensions info "$EXTENSION_UUID" | grep "State:" | awk '{print $2}')
