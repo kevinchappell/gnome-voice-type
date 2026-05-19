@@ -148,8 +148,10 @@ const Indicator = GObject.registerClass(
     }
 
     async _startFileRecording() {
-      // Create a temporary file for the recording
-      this.tempFile = GLib.build_filenamev([GLib.get_tmp_dir(), `voice-input-${Date.now()}.wav`]);
+      // Create a private temporary directory for the recording. The filename
+      // inside it is stable, but other users cannot access or pre-create it.
+      this.tempDir = GLib.Dir.make_tmp('voice-type-input-XXXXXX');
+      this.tempFile = GLib.build_filenamev([this.tempDir, 'recording.wav']);
 
       // Get recording quality setting
       const recordingQuality = this._settings.get_string('recording-quality');
@@ -167,12 +169,36 @@ const Indicator = GObject.registerClass(
           break;
       }
 
-      // Create GStreamer pipeline for audio recording
-      const pipelineStr = `autoaudiosrc ! audioconvert ! audioresample ! audio/x-raw,rate=${sampleRate},channels=1 ! wavenc ! filesink location="${this.tempFile}"`;
-      this.pipeline = Gst.parse_launch(pipelineStr);
+      // Create GStreamer pipeline for audio recording without parsing a
+      // string. The filesink path is assigned as a property, so it does not
+      // need pipeline-syntax escaping.
+      this.pipeline = Gst.Pipeline.new('voice-type-input-recording');
+      const source = Gst.ElementFactory.make('autoaudiosrc', 'source');
+      const convert = Gst.ElementFactory.make('audioconvert', 'convert');
+      const resample = Gst.ElementFactory.make('audioresample', 'resample');
+      const capsfilter = Gst.ElementFactory.make('capsfilter', 'capsfilter');
+      const encoder = Gst.ElementFactory.make('wavenc', 'encoder');
+      const sink = Gst.ElementFactory.make('filesink', 'sink');
 
-      if (!this.pipeline) {
+      if (!this.pipeline || !source || !convert || !resample || !capsfilter || !encoder || !sink) {
+        this.pipeline = null;
+        this._cleanupTempFile();
         throw new Error('Failed to create GStreamer pipeline');
+      }
+
+      capsfilter.set_property('caps', Gst.Caps.from_string(`audio/x-raw,rate=${sampleRate},channels=1`));
+      sink.set_property('location', this.tempFile);
+
+      for (const element of [source, convert, resample, capsfilter, encoder, sink]) {
+        this.pipeline.add(element);
+      }
+
+      if (!source.link(convert) || !convert.link(resample) || !resample.link(capsfilter) ||
+          !capsfilter.link(encoder) || !encoder.link(sink)) {
+        this.pipeline.set_state(Gst.State.NULL);
+        this.pipeline = null;
+        this._cleanupTempFile();
+        throw new Error('Failed to link GStreamer pipeline');
       }
 
       // Start recording
@@ -662,6 +688,17 @@ const Indicator = GObject.registerClass(
           this._logDebug('Error cleaning up temp file:', error);
         }
         this.tempFile = null;
+      }
+      if (this.tempDir) {
+        try {
+          const dir = Gio.File.new_for_path(this.tempDir);
+          if (dir.query_exists(null)) {
+            dir.delete(null);
+          }
+        } catch (error) {
+          this._logDebug('Error cleaning up temp directory:', error);
+        }
+        this.tempDir = null;
       }
     }
 
