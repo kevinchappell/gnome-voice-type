@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.3...v1.0.4) (2026-05-20)
+
+
+### Bug Fixes
+
+* use private temp directory for recording ([add37d7](https://github.com/kevinchappell/gnome-voice-type/commit/add37d73cb0101fe26abc34b6fa1c946dcf3412b))
+
 ## [1.0.4](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.3...v1.0.4) (2026-05-19)
 
 
