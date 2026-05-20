@@ -4,6 +4,8 @@ A GNOME Shell extension that records your voice from the top panel, sends the au
 
 Requires GNOME Shell 46+ (Wayland or X11).
 
+<img width="958" height="440" alt="Screenshot from 2026-05-19 17-00-34" src="https://github.com/user-attachments/assets/20209831-ab31-4816-a7cd-30e95c88a14c" />
+
 ## Privacy & network use
 
 This extension **uploads recorded audio to a speech-to-text endpoint that you configure** when you start a recording. The default provider is OpenAI, but requests require an API key; you can also choose a local or remote OpenAI-compatible endpoint. If you point it at OpenAI, OpenRouter, or another remote provider, your audio is sent to that provider under their terms.
