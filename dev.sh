@@ -45,10 +45,14 @@ check_gnome_shell() {
     fi
 }
 
-# Function to start nested GNOME Shell session (Wayland)
+# GNOME 49+ removed `--nested`; the replacement is `--devkit` (a windowed dev
+# shell that doesn't take over the seat). The old `Meta.restart()` and
+# `ReloadExtension` paths are also disabled on Wayland, so the only way to
+# pick up code changes is to relaunch the devkit shell (or log out/in for the
+# real session).
 start_nested_session() {
-    print_status "Starting nested GNOME Shell session for testing..."
-    print_warning "Nested GNOME Shell is only useful for limited UI smoke testing on Wayland"
+    print_status "Starting devkit GNOME Shell session for testing..."
+    print_warning "Devkit Shell is only useful for limited UI smoke testing on Wayland"
     print_warning "It may not have access to the same microphone, clipboard, typing, or portal APIs as your real session"
     print_status "For normal development in your active Wayland session, prefer: $0 reload"
     print_status ""
@@ -57,9 +61,9 @@ start_nested_session() {
     print_status "2. Open a terminal inside the new session"
     print_status "3. Run: gnome-extensions enable $EXTENSION_UUID"
     print_status "4. Your extension should appear in the top bar"
-    print_status "5. Close the nested session when done testing"
+    print_status "5. Close the devkit session when done testing"
     print_status ""
-    print_status "Starting nested session in 3 seconds..."
+    print_status "Starting devkit session in 3 seconds..."
     sleep 3
 
     # Ensure extension is installed first
@@ -68,15 +72,17 @@ start_nested_session() {
         install_extension
     fi
 
-    # Start the nested session
-    print_status "Starting nested GNOME Shell session..."
-    dbus-run-session -- gnome-shell --nested --wayland
+    print_status "Starting devkit GNOME Shell session..."
+    dbus-run-session -- gnome-shell --devkit
 }
 
-# Function to test in nested session with auto-enable
+# Auto-enable the extension before launching the devkit shell. The extension
+# enable state lives in dconf (per-user, shared with the main session), so
+# enabling here also flips it on in the parent session — that's fine for a
+# dev tool.
 test_nested() {
-    print_status "Testing extension in nested GNOME Shell session..."
-    print_warning "Nested sessions are not a full substitute for real-session testing on Wayland"
+    print_status "Testing extension in devkit GNOME Shell session..."
+    print_warning "Devkit sessions are not a full substitute for real-session testing on Wayland"
 
     # Ensure extension is installed
     if [ ! -d "$EXTENSION_DIR" ]; then
@@ -84,19 +90,13 @@ test_nested() {
         install_extension
     fi
 
-    print_status "Starting nested session with extension auto-enabled..."
-    print_status "The extension should automatically appear in the top bar"
+    print_status "Enabling extension..."
+    gnome-extensions enable "$EXTENSION_UUID" || true
+
+    print_status "Starting devkit session with extension auto-enabled..."
     print_status ""
 
-    # Start nested session and enable extension automatically
-    dbus-run-session bash -c "
-        gnome-shell --nested --wayland &
-        NESTED_PID=\$!
-        sleep 5
-        echo 'Enabling extension in nested session...'
-        gnome-extensions enable '$EXTENSION_UUID'
-        wait \$NESTED_PID
-    "
+    dbus-run-session -- gnome-shell --devkit
 }
 
 # Function to refresh GNOME Shell extension cache
@@ -638,8 +638,8 @@ case "${1:-install}" in
         echo "  disable, d    Disable the extension"
         echo "  status, s     Check extension status"
         echo "  watch, w      Watch for file changes and auto-reload in the current session"
-        echo "  nested, n     Start nested GNOME Shell for limited smoke testing"
-        echo "  test, t       Auto-enable extension in a nested smoke-test session"
+        echo "  nested, n     Start devkit GNOME Shell for limited smoke testing"
+        echo "  test, t       Auto-enable extension in a devkit smoke-test session"
         echo "  prefs, p      Open extension preferences dialog"
         echo "  logs, l       Show GNOME Shell logs"
         echo "  debug, db     Show detailed debug information"
@@ -649,8 +649,8 @@ case "${1:-install}" in
         echo "Examples:"
         echo "  $0 install    # Install and enable extension"
         echo "  $0 reload     # Preferred Wayland workflow for code changes"
-        echo "  $0 nested     # Run a limited nested-session smoke test"
-        echo "  $0 test       # Auto-test in a nested smoke-test session"
+        echo "  $0 nested     # Run a limited devkit-session smoke test"
+        echo "  $0 test       # Auto-test in a devkit smoke-test session"
         echo "  $0 prefs      # Open preferences to configure endpoint"
         echo "  $0 watch      # Auto-reload on file changes in the active session"
         echo "  $0 logs       # Monitor logs while developing"
