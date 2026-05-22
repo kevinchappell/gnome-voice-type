@@ -73,7 +73,11 @@ start_nested_session() {
     fi
 
     print_status "Starting devkit GNOME Shell session..."
-    dbus-run-session -- gnome-shell --devkit
+    if gnome-shell --help 2>&1 | grep -q -- '--devkit'; then
+        dbus-run-session -- gnome-shell --devkit
+    else
+        dbus-run-session -- gnome-shell --nested --wayland
+    fi
 }
 
 # Auto-enable the extension before launching the devkit shell. The extension
@@ -96,7 +100,11 @@ test_nested() {
     print_status "Starting devkit session with extension auto-enabled..."
     print_status ""
 
-    dbus-run-session -- gnome-shell --devkit
+    if gnome-shell --help 2>&1 | grep -q -- '--devkit'; then
+        dbus-run-session -- gnome-shell --devkit
+    else
+        dbus-run-session -- gnome-shell --nested --wayland
+    fi
 }
 
 # Function to refresh GNOME Shell extension cache

@@ -61,7 +61,7 @@ const Indicator = GObject.registerClass(
       // that toggles recording.
       this._clickGesture = new Clutter.ClickGesture();
       this._clickGesture.set_recognize_on_press(true);
-      this._clickGesture.connect('recognize', () => this._toggleRecording());
+      this._clickGestureSignalId = this._clickGesture.connect('recognize', () => this._toggleRecording());
       this.add_action(this._clickGesture);
 
       // React to debug-mode toggling at runtime so the overlay closes immediately when disabled
@@ -871,6 +871,16 @@ const Indicator = GObject.registerClass(
       this._cleanupTempFile();
       // Destroy debug window if present
       this._destroyDebugWindow();
+
+      // Remove the click gesture and disconnect its signal
+      if (this._clickGesture) {
+        if (this._clickGestureSignalId) {
+          this._clickGesture.disconnect(this._clickGestureSignalId);
+          this._clickGestureSignalId = null;
+        }
+        this.remove_action(this._clickGesture);
+        this._clickGesture = null;
+      }
 
       // Disconnect all signal connections before destroying
       if (this._signalConnections) {
