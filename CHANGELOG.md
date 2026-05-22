@@ -1,3 +1,15 @@
+# [1.1.0](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.3...v1.1.0) (2026-05-22)
+
+
+### Bug Fixes
+
+* use private temp directory for recording ([add37d7](https://github.com/kevinchappell/gnome-voice-type/commit/add37d73cb0101fe26abc34b6fa1c946dcf3412b))
+
+
+### Features
+
+* add gnome 50 support ([7eb742a](https://github.com/kevinchappell/gnome-voice-type/commit/7eb742a519af45ba1062a5f44f20ca63dcc24f72))
+
 ## [1.0.4](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.3...v1.0.4) (2026-05-22)
 
 
