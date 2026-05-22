@@ -14,7 +14,10 @@ import ApiClient from './apiClient.js';
 const Indicator = GObject.registerClass(
   class Indicator extends PanelMenu.Button {
     _init(extension) {
-      super._init(0.0, _('Voice Type Input'));
+      // Pass dontCreateMenu=true: we don't want the popup menu and we attach
+      // our own click gesture below, since the parent's gesture is wired to
+      // open the (now nonexistent) menu.
+      super._init(0.0, _('Voice Type Input'), true);
 
       // Store extension reference for settings access
       this._extension = extension;
@@ -53,9 +56,13 @@ const Indicator = GObject.registerClass(
       this._debugTypeSource = 0;
       this._lastTypeMethod = '';
 
-      // Connect click event to toggle recording - track connection for cleanup
-      const clickConnection = this.connect('button-press-event', this._onClicked.bind(this));
-      this._signalConnections.push({ object: this, id: clickConnection });
+      // Shell 50's PanelMenu.Button handles clicks via Clutter.ClickGesture,
+      // not button-press-event signals or vfunc_event. Attach our own gesture
+      // that toggles recording.
+      this._clickGesture = new Clutter.ClickGesture();
+      this._clickGesture.set_recognize_on_press(true);
+      this._clickGestureSignalId = this._clickGesture.connect('recognize', () => this._toggleRecording());
+      this.add_action(this._clickGesture);
 
       // React to debug-mode toggling at runtime so the overlay closes immediately when disabled
       const debugModeConnection = this._settings.connect('changed::debug-mode', () => {
@@ -65,15 +72,6 @@ const Indicator = GObject.registerClass(
         }
       });
       this._signalConnections.push({ object: this._settings, id: debugModeConnection });
-
-      // Disable the popup menu to avoid confusion with click toggle
-      this.menu.actor.hide();
-      this.menu.actor.reactive = false;
-    }
-
-    _onClicked() {
-      this._toggleRecording();
-      return Clutter.EVENT_PROPAGATE;
     }
 
     _logDebug(...args) {
@@ -873,6 +871,16 @@ const Indicator = GObject.registerClass(
       this._cleanupTempFile();
       // Destroy debug window if present
       this._destroyDebugWindow();
+
+      // Remove the click gesture and disconnect its signal
+      if (this._clickGesture) {
+        if (this._clickGestureSignalId) {
+          this._clickGesture.disconnect(this._clickGestureSignalId);
+          this._clickGestureSignalId = null;
+        }
+        this.remove_action(this._clickGesture);
+        this._clickGesture = null;
+      }
 
       // Disconnect all signal connections before destroying
       if (this._signalConnections) {

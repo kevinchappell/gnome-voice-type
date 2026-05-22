@@ -16,8 +16,8 @@ All workflows go through `./dev.sh` (also wrapped by `Makefile` and `package.jso
 ./dev.sh install      # install + enable
 ./dev.sh reload       # quick reload during dev
 ./dev.sh watch        # auto-reload on file changes (needs inotify-tools)
-./dev.sh nested       # launch nested GNOME Shell — REQUIRED for testing on Wayland
-./dev.sh test         # nested session with the extension auto-enabled
+./dev.sh nested       # launch devkit GNOME Shell (falls back to --nested --wayland on Shell 45-48)
+./dev.sh test         # devkit/nested session with the extension auto-enabled
 ./dev.sh logs         # journalctl tail for gnome-shell
 ./dev.sh debug        # validation + state dump
 ./dev.sh prefs        # open preferences dialog
@@ -60,7 +60,7 @@ When changing insertion logic, touch `_tryTypeWithYdotool()`, `_isTerminalApplic
 
 ## Wayland note
 
-You cannot reload the extension into the running shell on Wayland — always use `./dev.sh nested` for iteration. On X11, `./dev.sh reload` works in-session.
+You cannot reload the extension into the running shell on Wayland (Shell 49+ disabled `Meta.restart()` and `ReloadExtension`) — always use `./dev.sh nested` (which runs `gnome-shell --devkit` on Shell 49+, or `--nested --wayland` on Shell 45-48). On X11, `./dev.sh reload` works in-session.
 
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
