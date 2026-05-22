@@ -7,7 +7,9 @@
     "45",
     "46",
     "47",
-    "48"
+    "48",
+    "49",
+    "50"
   ],
   "url": "https://github.com/kevinchappell/gnome-voice-type",
   "settings-schema": "org.gnome.shell.extensions.voice-type-input",
