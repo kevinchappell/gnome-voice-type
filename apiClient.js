@@ -2,12 +2,19 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup';
 
-// Conditionally load Secret - if unavailable, auth will be skipped
-let _secret = null;
-try {
-    _secret = (await import('gi://Secret')).default;
-} catch (_e) {
-    _secret = null;
+// Conditionally load Secret - if unavailable, auth will be skipped.
+// Loaded lazily (not at module top level): a top-level `await` here would make
+// importing this module return a pending promise, and GNOME Shell evaluates
+// extension modules during a synchronous startup phase where the main loop
+// can't drive that promise to completion — which freezes the whole session.
+let _secretPromise = null;
+function getSecret() {
+    if (!_secretPromise) {
+        _secretPromise = import('gi://Secret')
+            .then(m => m.default)
+            .catch(() => null);
+    }
+    return _secretPromise;
 }
 
 // Base URL is expected to already include the API version (e.g. ".../v1"),
@@ -53,7 +60,8 @@ export default class ApiClient {
      * Retrieve the API key from Secret Service (GNOME Keyring).
      * Returns null if no key is found or Secret Service is unavailable.
      */
-    _getApiKey() {
+    async _getApiKey() {
+        const _secret = await getSecret();
         if (!_secret) return null;
         try {
             const schema = new _secret.Schema(
@@ -96,7 +104,7 @@ export default class ApiClient {
         const fileContent = await this._loadAudioFile(tempFile);
 
         const fullUrl = buildTranscriptionUrl(this.baseUrl);
-        const apiKey = this._getApiKey();
+        const apiKey = await this._getApiKey();
 
         let message;
         if (this.provider === 'openrouter') {
