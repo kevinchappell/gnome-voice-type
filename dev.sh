@@ -107,6 +107,81 @@ test_nested() {
     fi
 }
 
+# Smoke-test against an OLDER GNOME than the host. The host's
+# `gnome-shell --nested/--devkit` always uses the system GNOME (e.g. 50), so to
+# exercise 45-48 we launch a nested shell from inside a distrobox container
+# whose base image ships that GNOME version. distrobox shares $HOME, the
+# Wayland socket and dbus, so the nested shell opens a window on the host and
+# reads the extension from ~/.local/share/gnome-shell/extensions.
+#
+# Only 45-48 are supported: GNOME 49 removed `--nested`, so for 49/50 use the
+# host devkit path (`$0 nested`).
+nested_version() {
+    local version="$1"
+    local image
+    case "$version" in
+        45) image="fedora:39" ;;
+        46) image="fedora:40" ;;
+        47) image="fedora:41" ;;
+        48) image="fedora:42" ;;
+        "")
+            print_error "Usage: $0 nested-version <45|46|47|48>"
+            exit 1
+            ;;
+        *)
+            print_error "Unsupported version '$version'. Choose 45, 46, 47, or 48."
+            print_status "GNOME 49+ removed --nested; use '$0 nested' to smoke-test on the host GNOME."
+            exit 1
+            ;;
+    esac
+
+    if ! command -v distrobox >/dev/null 2>&1; then
+        print_error "distrobox is not installed."
+        print_status "Install it with one of:"
+        print_status "  sudo apt install distrobox     # Debian/Ubuntu"
+        print_status "  sudo dnf install distrobox     # Fedora"
+        exit 1
+    fi
+
+    local box="gvt-gnome${version}"
+
+    # The nested shell reads the extension from the shared home, so make sure
+    # it is installed there first.
+    if [ ! -d "$EXTENSION_DIR" ]; then
+        print_status "Installing extension first..."
+        install_extension
+    fi
+
+    if ! distrobox list 2>/dev/null | grep -qw "$box"; then
+        print_status "Creating distrobox '$box' from $image (first run only)..."
+        distrobox create --name "$box" --image "$image" --yes
+        print_status "Installing gnome-shell inside '$box' (this can take a few minutes)..."
+        if ! distrobox enter "$box" -- sudo dnf install -y gnome-shell glib2; then
+            print_error "Failed to install gnome-shell inside the container."
+            exit 1
+        fi
+    fi
+
+    print_status "Recompiling schemas and launching nested GNOME $version..."
+    print_warning "Nested sessions don't share the host's mic/portal APIs - UI smoke testing only."
+    # gnome-shell's LoginManagerSystemd needs systemd-logind on the system bus,
+    # which the container lacks - without it the nested shell crashes on startup
+    # before opening a window. distrobox mounts the host root at /run/host, so we
+    # point the system bus at the host's (real, running) logind.
+    # The nested window is not drag-resizable; its size is the virtual monitor
+    # resolution set via MUTTER_DEBUG_DUMMY_MODE_SPECS. Override with GVT_NESTED_RES.
+    local res="${GVT_NESTED_RES:-1600x900}"
+    print_status "Nested window size: $res (override with GVT_NESTED_RES=WxH)"
+    distrobox enter "$box" -- bash -c "
+        set -e
+        glib-compile-schemas '$EXTENSION_DIR/schemas'
+        host_bus=/run/host/run/dbus/system_bus_socket
+        [ -S \"\$host_bus\" ] && export DBUS_SYSTEM_BUS_ADDRESS=\"unix:path=\$host_bus\"
+        export MUTTER_DEBUG_DUMMY_MODE_SPECS='$res'
+        exec dbus-run-session -- bash -c 'gnome-extensions enable \"$EXTENSION_UUID\"; exec gnome-shell --nested --wayland'
+    "
+}
+
 # Function to refresh GNOME Shell extension cache
 refresh_cache() {
     print_status "Refreshing GNOME Shell extension cache..."
@@ -541,6 +616,10 @@ case "${1:-install}" in
         test_nested
         ;;
 
+    "nested-version"|"nv")
+        nested_version "$2"
+        ;;
+
     "prefs"|"p")
         check_gnome_shell
         install_extension
@@ -648,6 +727,8 @@ case "${1:-install}" in
         echo "  watch, w      Watch for file changes and auto-reload in the current session"
         echo "  nested, n     Start devkit GNOME Shell for limited smoke testing"
         echo "  test, t       Auto-enable extension in a devkit smoke-test session"
+        echo "  nested-version, nv <45|46|47|48>"
+        echo "                Smoke-test on an older GNOME via a distrobox container"
         echo "  prefs, p      Open extension preferences dialog"
         echo "  logs, l       Show GNOME Shell logs"
         echo "  debug, db     Show detailed debug information"
@@ -659,6 +740,7 @@ case "${1:-install}" in
         echo "  $0 reload     # Preferred Wayland workflow for code changes"
         echo "  $0 nested     # Run a limited devkit-session smoke test"
         echo "  $0 test       # Auto-test in a devkit smoke-test session"
+        echo "  $0 nested-version 47  # Smoke-test on GNOME 47 in a container"
         echo "  $0 prefs      # Open preferences to configure endpoint"
         echo "  $0 watch      # Auto-reload on file changes in the active session"
         echo "  $0 logs       # Monitor logs while developing"
