@@ -13,5 +13,13 @@
   ],
   "url": "https://github.com/kevinchappell/gnome-voice-type",
   "settings-schema": "org.gnome.shell.extensions.voice-type-input",
-  "gettext-domain": "voice-type-input"
+  "gettext-domain": "voice-type-input",
+  "donations": {
+    "buymeacoffee": "kevinchappell",
+    "github": "kevinchappell",
+    "paypal": "KevinChappellDev",
+    "custom": [
+      "https://buy.polar.sh/polar_cl_Y6ksGYGvc9KcATNjGAEVK1rTGh5VKBBQbfysb31K6DI"
+    ]
+  }
 }
