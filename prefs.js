@@ -298,11 +298,11 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             }));
 
             const controller = new Gtk.EventControllerKey();
-            controller.connect('key-pressed', (_ctrl, keyval, keycode, state) => {
+            controller.connect('key-pressed', (_ctrl, keyval, _keycode, state) => {
                 // Filter out modifier-only presses
                 const modifiers = state & Gtk.accelerator_get_default_mod_mask();
 
-                if (keyval === Gtk.accelerator_name_with_keycode(null, keyval, keycode, 0) === 'Escape' || keyval === 0xff1b) {
+                if (keyval === 0xff1b) { // Escape - cancel
                     dialog.close();
                     return true;
                 }

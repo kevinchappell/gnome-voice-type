@@ -19,8 +19,7 @@ const Indicator = GObject.registerClass(
       // open the (now nonexistent) menu.
       super._init(0.0, _('Voice Type Input'), true);
 
-      // Store extension reference for settings access
-      this._extension = extension;
+      // Settings instance for the lifetime of the indicator
       this._settings = extension.getSettings();
 
       // Cancellable for async subprocess calls (ydotool/wtype)
@@ -53,13 +52,21 @@ const Indicator = GObject.registerClass(
       this._debugTypeSource = 0;
       this._lastTypeMethod = '';
 
-      // Shell 50's PanelMenu.Button handles clicks via Clutter.ClickGesture,
-      // not button-press-event signals or vfunc_event. Attach our own gesture
-      // that toggles recording.
-      this._clickGesture = new Clutter.ClickGesture();
-      this._clickGesture.set_recognize_on_press(true);
-      this._clickGesture.connectObject('recognize', () => this._toggleRecording(), this);
-      this.add_action(this._clickGesture);
+      // Newer GNOME Shell routes PanelMenu.Button clicks through a
+      // Clutter.ClickGesture rather than button-press-event, so attach our own
+      // gesture there. Older shells lack ClickGesture, so fall back to the
+      // button-press-event signal instead of throwing.
+      if (Clutter.ClickGesture) {
+        this._clickGesture = new Clutter.ClickGesture();
+        this._clickGesture.set_recognize_on_press(true);
+        this._clickGesture.connectObject('recognize', () => this._toggleRecording(), this);
+        this.add_action(this._clickGesture);
+      } else {
+        this.connectObject('button-press-event', () => {
+          this._toggleRecording();
+          return Clutter.EVENT_STOP;
+        }, this);
+      }
 
       // React to debug-mode toggling at runtime so the overlay closes immediately when disabled
       this._settings.connectObject('changed::debug-mode', () => {
@@ -208,7 +215,7 @@ const Indicator = GObject.registerClass(
         if (this.isRecording) {
           const enableNotifications = this._settings.get_boolean('enable-notifications');
           if (enableNotifications) {
-            Main.notify(_('Voice Type Input'), _(`Recording stopped - ${recordingLimitSeconds} second limit reached`));
+            Main.notify(_('Voice Type Input'), _('Recording stopped - %d second limit reached').replace('%d', recordingLimitSeconds));
           }
           this._stopRecording();
         }
@@ -398,7 +405,8 @@ const Indicator = GObject.registerClass(
           }
 
           // Give the target app a moment to consume the paste before restoring.
-          GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+          this._clipboardRestoreTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            this._clipboardRestoreTimeout = null;
             // Only restore if the selection still holds the transcription we
             // wrote — otherwise the user or app has put something newer there
             // and we shouldn't overwrite it.
@@ -856,6 +864,12 @@ const Indicator = GObject.registerClass(
         this.recordingTimeout = null;
       }
 
+      // Clear pending clipboard-restore timeout
+      if (this._clipboardRestoreTimeout) {
+        GLib.source_remove(this._clipboardRestoreTimeout);
+        this._clipboardRestoreTimeout = null;
+      }
+
       // Clean up GStreamer pipeline
       if (this.pipeline) {
         this.pipeline.set_state(Gst.State.NULL);
@@ -1000,12 +1014,7 @@ export default class VoiceTypeInputExtension extends Extension {
     Main.wm.removeKeybinding('toggle-recording-shortcut');
 
     if (this._indicator) {
-      // Remove from panel first to prevent further interactions
-      if (Main.panel?.statusArea?.[this.uuid]) {
-        delete Main.panel.statusArea[this.uuid];
-      }
-
-      // Then destroy the indicator
+      // destroy() deregisters the button from the panel's status area.
       this._indicator.destroy();
       this._indicator = null;
     }
