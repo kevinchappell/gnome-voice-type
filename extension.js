@@ -305,7 +305,12 @@ const Indicator = GObject.registerClass(
       } catch (error) {
         const enableNotifications = this._settings.get_boolean('enable-notifications');
         if (enableNotifications) {
-          Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
+          if (error.isConnectionError) {
+            const endpoint = this._settings.get_string('endpoint-url');
+            Main.notify(_('Voice Type Input'), _("Can't reach the transcription server at %s. Is it running?").replace('%s', endpoint));
+          } else {
+            Main.notify(_('Voice Type Input'), _('Transcription failed: ') + error.message);
+          }
         }
         this._logError('Transcription error:', error);
       } finally {

@@ -24,6 +24,20 @@ function buildTranscriptionUrl(baseUrl) {
     return `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
 }
 
+// Socket-level failures that mean the endpoint is unreachable (server not
+// running, wrong host/port, or unresponsive) rather than an HTTP/API error.
+function isConnectionError(error) {
+    if (!(error instanceof GLib.Error)) return false;
+    const codes = [
+        Gio.IOErrorEnum.CONNECTION_REFUSED,
+        Gio.IOErrorEnum.HOST_UNREACHABLE,
+        Gio.IOErrorEnum.HOST_NOT_FOUND,
+        Gio.IOErrorEnum.NETWORK_UNREACHABLE,
+        Gio.IOErrorEnum.TIMED_OUT,
+    ];
+    return codes.some(code => error.matches(Gio.IOErrorEnum, code));
+}
+
 export const PROVIDER_DEFAULTS = {
     openai: {
         baseUrl: 'https://api.openai.com/v1',
@@ -158,6 +172,15 @@ export default class ApiClient {
                     }
                 });
             });
+        } catch (err) {
+            // Flag unreachable-server failures so the caller can show a clear
+            // "is it running?" message instead of a raw socket error.
+            if (isConnectionError(err)) {
+                const connErr = new Error('Transcription server unreachable');
+                connErr.isConnectionError = true;
+                throw connErr;
+            }
+            throw err;
         } finally {
             session.abort();
         }

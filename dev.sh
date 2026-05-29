@@ -453,11 +453,12 @@ disable_extension() {
 
     if gnome-extensions disable "$EXTENSION_UUID" 2>/dev/null; then
         print_success "Extension disabled"
-        return 0
     else
-        print_warning "Extension might already be disabled"
-        return 1
+        # Already disabled (or not yet enabled/installed) is the desired end
+        # state, so treat it as success — otherwise `set -e` aborts the install.
+        print_status "Extension already disabled; nothing to do"
     fi
+    return 0
 }
 
 # Function to reload the extension (disable then enable)
