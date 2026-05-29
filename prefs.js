@@ -20,25 +20,26 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
         page.add(apiGroup);
 
-        const currentProvider = this.getSettings().get_string('api-provider');
+        const settings = this.getSettings();
+        const currentProvider = settings.get_string('api-provider');
 
         // Endpoint URL setting
         const endpointRow = new Adw.EntryRow({
             title: _('Base URL'),
-            text: this.getSettings().get_string('endpoint-url'),
+            text: settings.get_string('endpoint-url'),
             sensitive: currentProvider === 'custom',
         });
         const endpointChangedId = endpointRow.connect('changed', () => {
-            this.getSettings().set_string('endpoint-url', endpointRow.get_text());
+            settings.set_string('endpoint-url', endpointRow.get_text());
         });
 
         // Model setting
         const modelRow = new Adw.EntryRow({
             title: _('Model'),
-            text: this.getSettings().get_string('api-model'),
+            text: settings.get_string('api-model'),
         });
         const modelChangedId = modelRow.connect('changed', () => {
-            this.getSettings().set_string('api-model', modelRow.get_text());
+            settings.set_string('api-model', modelRow.get_text());
         });
 
         // Provider preset
@@ -57,7 +58,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
         providerRow.connect('notify::selected', () => {
             const selected = providerMap[providerRow.get_selected()];
-            this.getSettings().set_string('api-provider', selected);
+            settings.set_string('api-provider', selected);
 
             const preset = PROVIDER_DEFAULTS[selected];
             if (preset.baseUrl) {
@@ -67,16 +68,16 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
                 endpointRow.set_sensitive(false);
             } else {
                 endpointRow.block_signal_handler(endpointChangedId);
-                endpointRow.set_text(this.getSettings().get_string('endpoint-url'));
+                endpointRow.set_text(settings.get_string('endpoint-url'));
                 endpointRow.unblock_signal_handler(endpointChangedId);
                 endpointRow.set_sensitive(true);
             }
             modelRow.block_signal_handler(modelChangedId);
             if (selected === 'custom') {
-                modelRow.set_text(this.getSettings().get_string('api-model'));
+                modelRow.set_text(settings.get_string('api-model'));
             } else {
                 modelRow.set_text(preset.model);
-                this.getSettings().set_string('api-model', preset.model);
+                settings.set_string('api-model', preset.model);
             }
             modelRow.unblock_signal_handler(modelChangedId);
         });
@@ -93,7 +94,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         apiKeyRow.set_text(''); // Never show stored key
         apiKeyRow.connect('apply', () => {
             const key = apiKeyRow.get_text();
-            const provider = this.getSettings().get_string('api-provider');
+            const provider = settings.get_string('api-provider');
             try {
                 const schema = new Secret.Schema(
                     'org.gnome.shell.extensions.voice-type-input',
@@ -140,14 +141,14 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         qualityRow.set_model(qualityModel);
 
         // Set current selection
-        const currentQuality = this.getSettings().get_string('recording-quality');
+        const currentQuality = settings.get_string('recording-quality');
         const qualityMap = { 'low': 0, 'medium': 1, 'high': 2 };
         qualityRow.set_selected(qualityMap[currentQuality] || 1);
 
         qualityRow.connect('notify::selected', () => {
             const selectedIndex = qualityRow.get_selected();
             const qualityValues = ['low', 'medium', 'high'];
-            this.getSettings().set_string('recording-quality', qualityValues[selectedIndex]);
+            settings.set_string('recording-quality', qualityValues[selectedIndex]);
         });
         recordingGroup.add(qualityRow);
 
@@ -160,11 +161,11 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
                 upper: 300,
                 step_increment: 5,
                 page_increment: 10,
-                value: this.getSettings().get_int('recording-limit-seconds'),
+                value: settings.get_int('recording-limit-seconds'),
             }),
         });
         timeLimitRow.connect('notify::value', () => {
-            this.getSettings().set_int('recording-limit-seconds', timeLimitRow.get_value());
+            settings.set_int('recording-limit-seconds', timeLimitRow.get_value());
         });
         recordingGroup.add(timeLimitRow);
 
@@ -179,10 +180,10 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         const notificationsRow = new Adw.SwitchRow({
             title: _('Enable Notifications'),
             subtitle: _('Show notifications for recording status and transcription results'),
-            active: this.getSettings().get_boolean('enable-notifications'),
+            active: settings.get_boolean('enable-notifications'),
         });
         notificationsRow.connect('notify::active', () => {
-            this.getSettings().set_boolean('enable-notifications', notificationsRow.get_active());
+            settings.set_boolean('enable-notifications', notificationsRow.get_active());
         });
         uiGroup.add(notificationsRow);
 
@@ -190,10 +191,10 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         const terminalSupportRow = new Adw.SwitchRow({
             title: _('Enhanced Terminal Support'),
             subtitle: _('Use specialized paste methods for terminal applications (recommended)'),
-            active: this.getSettings().get_boolean('enhanced-terminal-support'),
+            active: settings.get_boolean('enhanced-terminal-support'),
         });
         terminalSupportRow.connect('notify::active', () => {
-            this.getSettings().set_boolean('enhanced-terminal-support', terminalSupportRow.get_active());
+            settings.set_boolean('enhanced-terminal-support', terminalSupportRow.get_active());
         });
         uiGroup.add(terminalSupportRow);
 
@@ -201,10 +202,10 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         const muteMediaRow = new Adw.SwitchRow({
             title: _('Mute Media During Recording'),
             subtitle: _('Automatically pause playing media players to reduce background noise during voice recording'),
-            active: this.getSettings().get_boolean('mute-media-during-recording'),
+            active: settings.get_boolean('mute-media-during-recording'),
         });
         muteMediaRow.connect('notify::active', () => {
-            this.getSettings().set_boolean('mute-media-during-recording', muteMediaRow.get_active());
+            settings.set_boolean('mute-media-during-recording', muteMediaRow.get_active());
         });
         uiGroup.add(muteMediaRow);
 
@@ -212,10 +213,10 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         const autoInsertRow = new Adw.SwitchRow({
             title: _('Auto-Insert Text'),
             subtitle: _('Automatically type or paste transcribed text into the focused application. When disabled, text is only copied to the clipboard.'),
-            active: this.getSettings().get_boolean('auto-insert'),
+            active: settings.get_boolean('auto-insert'),
         });
         autoInsertRow.connect('notify::active', () => {
-            this.getSettings().set_boolean('auto-insert', autoInsertRow.get_active());
+            settings.set_boolean('auto-insert', autoInsertRow.get_active());
         });
         uiGroup.add(autoInsertRow);
 
@@ -223,10 +224,10 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         const keepClipboardRow = new Adw.SwitchRow({
             title: _('Keep Transcription on Clipboard'),
             subtitle: _('When auto-insert falls back to clipboard+paste, leave the transcribed text on the clipboard. When off, the previous clipboard text is restored (non-text clipboard contents such as images cannot be preserved).'),
-            active: this.getSettings().get_boolean('keep-clipboard-after-paste'),
+            active: settings.get_boolean('keep-clipboard-after-paste'),
         });
         keepClipboardRow.connect('notify::active', () => {
-            this.getSettings().set_boolean('keep-clipboard-after-paste', keepClipboardRow.get_active());
+            settings.set_boolean('keep-clipboard-after-paste', keepClipboardRow.get_active());
         });
         uiGroup.add(keepClipboardRow);
 
@@ -234,10 +235,10 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         const debugModeRow = new Adw.SwitchRow({
             title: _('Debug Mode'),
             subtitle: _('Show a test window to display and simulate typed transcription instead of sending it to the active application'),
-            active: this.getSettings().get_boolean('debug-mode'),
+            active: settings.get_boolean('debug-mode'),
         });
         debugModeRow.connect('notify::active', () => {
-            this.getSettings().set_boolean('debug-mode', debugModeRow.get_active());
+            settings.set_boolean('debug-mode', debugModeRow.get_active());
         });
         uiGroup.add(debugModeRow);
 
@@ -254,7 +255,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
             subtitle: _('Press the shortcut key combination to start/stop recording'),
         });
 
-        const currentShortcuts = this.getSettings().get_strv('toggle-recording-shortcut');
+        const currentShortcuts = settings.get_strv('toggle-recording-shortcut');
         const shortcutLabel = new Gtk.ShortcutLabel({
             accelerator: currentShortcuts.length > 0 ? currentShortcuts[0] : '',
             disabled_text: _('Disabled'),
@@ -273,7 +274,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
         });
 
         clearButton.connect('clicked', () => {
-            this.getSettings().set_strv('toggle-recording-shortcut', []);
+            settings.set_strv('toggle-recording-shortcut', []);
             shortcutLabel.set_accelerator('');
         });
 
@@ -307,7 +308,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
                 }
 
                 if (keyval === 0xff08) { // Backspace - disable shortcut
-                    this.getSettings().set_strv('toggle-recording-shortcut', []);
+                    settings.set_strv('toggle-recording-shortcut', []);
                     shortcutLabel.set_accelerator('');
                     dialog.close();
                     return true;
@@ -318,7 +319,7 @@ export default class VoiceTypeInputPreferences extends ExtensionPreferences {
 
                 const accel = Gtk.accelerator_name(keyval, modifiers);
                 if (accel) {
-                    this.getSettings().set_strv('toggle-recording-shortcut', [accel]);
+                    settings.set_strv('toggle-recording-shortcut', [accel]);
                     shortcutLabel.set_accelerator(accel);
                     dialog.close();
                 }

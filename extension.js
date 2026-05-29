@@ -23,9 +23,6 @@ const Indicator = GObject.registerClass(
       this._extension = extension;
       this._settings = extension.getSettings();
 
-      // Track signal connections for cleanup
-      this._signalConnections = [];
-
       // Cancellable for async subprocess calls (ydotool/wtype)
       this._subprocessCancellable = new Gio.Cancellable();
 
@@ -61,17 +58,16 @@ const Indicator = GObject.registerClass(
       // that toggles recording.
       this._clickGesture = new Clutter.ClickGesture();
       this._clickGesture.set_recognize_on_press(true);
-      this._clickGestureSignalId = this._clickGesture.connect('recognize', () => this._toggleRecording());
+      this._clickGesture.connectObject('recognize', () => this._toggleRecording(), this);
       this.add_action(this._clickGesture);
 
       // React to debug-mode toggling at runtime so the overlay closes immediately when disabled
-      const debugModeConnection = this._settings.connect('changed::debug-mode', () => {
+      this._settings.connectObject('changed::debug-mode', () => {
         this._debugMode = this._settings.get_boolean('debug-mode');
         if (!this._debugMode) {
           this._destroyDebugWindow();
         }
-      });
-      this._signalConnections.push({ object: this._settings, id: debugModeConnection });
+      }, this);
     }
 
     _logDebug(...args) {
@@ -202,7 +198,11 @@ const Indicator = GObject.registerClass(
       // Start recording
       this.pipeline.set_state(Gst.State.PLAYING);
 
-      // Set up recording timeout
+      // Set up recording timeout, clearing any previous one first
+      if (this.recordingTimeout) {
+        GLib.source_remove(this.recordingTimeout);
+        this.recordingTimeout = null;
+      }
       const recordingLimitSeconds = this._settings.get_int('recording-limit-seconds');
       this.recordingTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, recordingLimitSeconds, () => {
         if (this.isRecording) {
@@ -509,13 +509,14 @@ const Indicator = GObject.registerClass(
 
     _tryAsyncSubprocess(commands, callback) {
       try {
-        if (!this._subprocessCancellable || this._destroying) {
+        if (!this._subprocessCancellable) {
           callback(false);
           return;
         }
         const proc = Gio.Subprocess.new(commands, Gio.SubprocessFlags.NONE);
         proc.wait_check_async(this._subprocessCancellable, (_proc, result) => {
-          if (this._destroying) return;
+          // Bail if we were destroyed while the subprocess was running.
+          if (!this._subprocessCancellable) return;
           try {
             const success = _proc.wait_check_finish(result);
             callback(success);
@@ -838,12 +839,6 @@ const Indicator = GObject.registerClass(
     }
 
     destroy() {
-      // Prevent multiple destroy calls
-      if (this._destroying) {
-        return;
-      }
-      this._destroying = true;
-
       // Cancel any in-flight async subprocess calls
       if (this._subprocessCancellable) {
         this._subprocessCancellable.cancel();
@@ -872,48 +867,17 @@ const Indicator = GObject.registerClass(
       // Destroy debug window if present
       this._destroyDebugWindow();
 
-      // Remove the click gesture and disconnect its signal
+      // Disconnect tracked signals (settings + click gesture)
+      this._settings.disconnectObject(this);
       if (this._clickGesture) {
-        if (this._clickGestureSignalId) {
-          this._clickGesture.disconnect(this._clickGestureSignalId);
-          this._clickGestureSignalId = null;
-        }
+        this._clickGesture.disconnectObject(this);
         this.remove_action(this._clickGesture);
         this._clickGesture = null;
       }
 
-      // Disconnect all signal connections before destroying
-      if (this._signalConnections) {
-        this._signalConnections.forEach(connection => {
-          try {
-            if (connection.object && connection.id) {
-              if (typeof connection.object.disconnect === 'function') {
-                connection.object.disconnect(connection.id);
-              }
-            }
-          } catch (e) {
-            this._logDebug('Signal disconnect failed:', e.message);
-          }
-        });
-        this._signalConnections = [];
-      }
-
-      // Destroy the icon safely
-      try {
-        if (this.icon && typeof this.icon.destroy === 'function') {
-          this.icon.destroy();
-        }
-      } catch (e) {
-        this._logDebug('Icon cleanup failed:', e.message);
-      }
+      // The icon is a child of the button, so super.destroy() disposes it.
       this.icon = null;
-
-      // Finally call parent destroy safely
-      try {
-        super.destroy();
-      } catch (e) {
-        this._logDebug('Parent destroy failed:', e.message);
-      }
+      super.destroy();
     }
 
     _ensureDebugWindow() {
@@ -959,7 +923,7 @@ const Indicator = GObject.registerClass(
         this._debugTypeSource = 0;
       }
       if (this._debugWindow) {
-        try { this._debugWindow.destroy(); } catch (e) { this._logDebug('Debug window destroy error:', e.message); }
+        this._debugWindow.destroy();
       }
       this._debugWindow = null;
       this._debugLabel = null;
@@ -1042,12 +1006,7 @@ export default class VoiceTypeInputExtension extends Extension {
       }
 
       // Then destroy the indicator
-      try {
-        this._indicator.destroy();
-      } catch (e) {
-        this._indicator._logDebug('Indicator destroy failed during disable:', e.message);
-      }
-
+      this._indicator.destroy();
       this._indicator = null;
     }
 
