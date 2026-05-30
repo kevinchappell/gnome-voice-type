@@ -1,3 +1,13 @@
+## [1.1.1](https://github.com/kevinchappell/gnome-voice-type/compare/v1.1.0...v1.1.1) (2026-05-30)
+
+
+### Bug Fixes
+
+* async secret fetch to prevent freezing ([87791e4](https://github.com/kevinchappell/gnome-voice-type/commit/87791e404b209b92dc1ed96b773a78b50ced9d4a))
+* gnome 45-47 compatibility, escape key ([6dadf5a](https://github.com/kevinchappell/gnome-voice-type/commit/6dadf5a7ab700a52cf836bf280fe17d632eb4ade))
+* guard for non-running server ([b4fd80c](https://github.com/kevinchappell/gnome-voice-type/commit/b4fd80c3e85f2509e07f5ee4da855b88fe8c374d))
+* use connectObject/disconnectObject, this._destroying, remove timeout ([9936917](https://github.com/kevinchappell/gnome-voice-type/commit/9936917844f8b75a2dd004aa34a6025156aa57d2))
+
 # [1.1.0](https://github.com/kevinchappell/gnome-voice-type/compare/v1.0.3...v1.1.0) (2026-05-22)
 
 
