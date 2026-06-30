@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/kevinchappell/gnome-voice-type/compare/v1.1.1...v1.1.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* intermittent gnome hang ([d478fe4](https://github.com/kevinchappell/gnome-voice-type/commit/d478fe42eee98befbe90949e628e0742f713a820))
+
 ## [1.1.1](https://github.com/kevinchappell/gnome-voice-type/compare/v1.1.0...v1.1.1) (2026-05-30)
 
 
