@@ -25,9 +25,6 @@ const Indicator = GObject.registerClass(
       // Cancellable for async subprocess calls (ydotool/wtype)
       this._subprocessCancellable = new Gio.Cancellable();
 
-      // Initialize GStreamer
-      Gst.init(null);
-
       // Create the microphone icon
       this.icon = new St.Icon({
         icon_name: 'audio-input-microphone-symbolic',
@@ -169,6 +166,13 @@ const Indicator = GObject.registerClass(
           sampleRate = 16000;
           break;
       }
+
+      // Lazily init GStreamer on first use. Calling Gst.init() in enable()/_init
+      // blocks the shell's main loop while the plugin registry is scanned; during
+      // the login startup animation that can wedge the compositor and freeze the
+      // session. Gst.init() is idempotent, so initializing here (first recording)
+      // is safe and keeps startup non-blocking.
+      Gst.init(null);
 
       // Create GStreamer pipeline for audio recording without parsing a
       // string. The filesink path is assigned as a property, so it does not
